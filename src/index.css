@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #faf6f0;
+  --bg-secondary: #fff5eb;
+  --bg-card: #ffffff;
+  --bg-elevated: #ffffff;
+  --text-primary: #1a1410;
+  --text-secondary: #6b5a4a;
+  --text-muted: #a09280;
+  --border: #e8ddd0;
+  --border-light: #f0e8dd;
+  --accent: #f59e0b;
+  --accent-light: #fbbf24;
+  --accent-dark: #d97706;
+  --accent-gradient: linear-gradient(135deg, #f59e0b, #f97316, #fbbf24);
+  --accent-subtle: rgba(245,158,11,0.08);
+  --accent-border: rgba(245,158,11,0.2);
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --scroll-thumb: linear-gradient(180deg, #f59e0b, #f97316);
+  --sidebar-bg: #ffffff;
+  --header-bg: rgba(255,255,255,0.85);
+}
+
+.dark {
+  --bg-primary: #0a0806;
+  --bg-secondary: #100d0a;
+  --bg-card: #1a1510;
+  --bg-elevated: #221c15;
+  --text-primary: #f0e8dd;
+  --text-secondary: #a09280;
+  --text-muted: #6b5a4a;
+  --border: #2a221a;
+  --border-light: #1f1912;
+  --accent: #f59e0b;
+  --accent-light: #fbbf24;
+  --accent-dark: #d97706;
+  --accent-gradient: linear-gradient(135deg, #f59e0b, #f97316, #fbbf24);
+  --accent-subtle: rgba(245,158,11,0.1);
+  --accent-border: rgba(245,158,11,0.25);
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --scroll-thumb: linear-gradient(180deg, #f59e0b, #f97316);
+  --sidebar-bg: #100d0a;
+  --header-bg: rgba(10,8,6,0.85);
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background 0.3s, color 0.3s;
+}
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 3px;
+}
+
+.javaline-grad {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.javaline-border {
+  position: relative;
+}
+.javaline-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--accent-gradient);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.glass {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}

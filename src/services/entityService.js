@@ -1,0 +1,218 @@
+import db from './db'
+
+function delay(ms = 200) { return new Promise(r => setTimeout(r, ms)) }
+
+function createEntityService(store, label) {
+
+  function getNextId(prefix) {
+    const items = db.getAll(store)
+    const nums = items
+      .map(i => { const m = (i.id || '').match(new RegExp(`^${prefix}-(\\d+)$`)); return m ? parseInt(m[1]) : 0 })
+      .filter(n => !isNaN(n))
+    const max = nums.length ? Math.max(...nums) : 0
+    return `${prefix}-${String(max + 1).padStart(3, '0')}`
+  }
+
+  return {
+    async list(filters = {}) {
+      await delay()
+      let items = db.getAll(store)
+      Object.entries(filters).forEach(([key, val]) => {
+        if (val !== undefined && val !== null && val !== '') {
+          items = items.filter(i =>
+            String(i[key] || '').toLowerCase().includes(String(val).toLowerCase())
+          )
+        }
+      })
+      return items
+    },
+
+    async getById(id) {
+      await delay()
+      return db.getById(store, id)
+    },
+
+    async create(data, userId = 'system') {
+      await delay(400)
+      const item = db.insert(store, data)
+      db.addAudit({ action: 'create', store, detail: `${label} creado: ${item.id || item.name || JSON.stringify(item).slice(0,50)}`, userId })
+      return item
+    },
+
+    async update(id, changes, userId = 'system') {
+      await delay(300)
+      const item = db.update(store, id, changes)
+      if (!item) throw new Error(`${label} no encontrado`)
+      db.addAudit({ action: 'update', store, detail: `${label} actualizado: ${id}`, userId })
+      return item
+    },
+
+    async remove(id, userId = 'system') {
+      await delay(300)
+      const ok = db.remove(store, id)
+      if (!ok) throw new Error(`${label} no encontrado`)
+      db.addAudit({ action: 'delete', store, detail: `${label} eliminado: ${id}`, userId })
+      return true
+    },
+
+    async getStats() {
+      await delay()
+      const items = db.getAll(store)
+      return { total: items.length, items }
+    },
+
+    getNextId,
+  }
+}
+
+// Create all entity services
+export const invoiceService = createEntityService('invoices', 'Factura')
+
+export const invoiceBusinessLogic = {
+  async generateInvoiceId() { return invoiceService.getNextId('INV') },
+
+  calculateTotals(items) {
+    return items.reduce((sum, item) => sum + (item.price * item.qty), 0)
+  },
+
+  async markAsPaid(id, userId) {
+    const inv = await invoiceService.update(id, { status: 'pagada', paidAt: new Date().toISOString() }, userId)
+    db.addAudit({ action: 'mark_paid', store: 'invoices', detail: `Factura marcada como pagada: ${id}`, userId })
+    return inv
+  },
+
+  async markAsOverdue(id, userId) {
+    return invoiceService.update(id, { status: 'vencida' }, userId)
+  },
+
+  async generateReport(filters = {}) {
+    const invoices = await invoiceService.list(filters)
+    const totalAmount = invoices.reduce((s, i) => s + i.amount, 0)
+    const byStatus = {}
+    invoices.forEach(i => { byStatus[i.status] = (byStatus[i.status] || 0) + i.amount })
+    return { invoices, totalAmount, byStatus, count: invoices.length }
+  },
+}
+
+export const contactService = createEntityService('contacts', 'Contacto')
+export const employeeService = createEntityService('employees', 'Empleado')
+export const purchaseService = createEntityService('purchases', 'Compra')
+export const productService = createEntityService('products', 'Producto')
+export const taskService = createEntityService('tasks', 'Tarea')
+export const meetingService = createEntityService('meetings', 'Reunión')
+export const roleService = createEntityService('roles', 'Rol')
+
+export const purchaseBusinessLogic = {
+  async receiveOrder(id, userId) {
+    return purchaseService.update(id, { status: 'recibido', receivedAt: new Date().toISOString() }, userId)
+  },
+  async getPendingOrders() { return purchaseService.list({ status: 'pendiente' }) },
+}
+
+export const taskBusinessLogic = {
+  async moveTask(id, newStatus, userId) {
+    return taskService.update(id, { status: newStatus }, userId)
+  },
+  async getBoard() {
+    const tasks = await taskService.list()
+    return {
+      todo: tasks.filter(t => t.status === 'todo'),
+      doing: tasks.filter(t => t.status === 'doing'),
+      done: tasks.filter(t => t.status === 'done'),
+    }
+  },
+}
+
+export const productBusinessLogic = {
+  async adjustStock(id, delta, userId) {
+    const product = await productService.getById(id)
+    if (!product) throw new Error('Producto no encontrado')
+    const newStock = Math.max(0, (product.stock || 0) + delta)
+    return productService.update(id, { stock: newStock }, userId)
+  },
+  async recordSale(id, qty, userId) {
+    const product = await productService.getById(id)
+    if (!product) throw new Error('Producto no encontrado')
+    return productService.update(id, {
+      stock: Math.max(0, (product.stock || 0) - qty),
+      sales: (product.sales || 0) + qty,
+    }, userId)
+  },
+  async getLowStock(threshold = 5) {
+    const products = await productService.list()
+    return products.filter(p => p.stock <= threshold)
+  },
+}
+
+// Chat service
+export const chatService = {
+  async getConversations() {
+    await delay()
+    return db.getAll('chats')
+  },
+
+  async getMessages(chatId) {
+    await delay()
+    const chat = db.getById('chats', chatId)
+    return chat?.messages || []
+  },
+
+  async sendMessage(chatId, text, userId) {
+    await delay(200)
+    const chat = db.getById('chats', chatId)
+    if (!chat) throw new Error('Conversación no encontrada')
+    const msg = { from: 'me', text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+    chat.messages.push(msg)
+    chat.lastMessage = text
+    chat.time = 'Ahora'
+    db.update('chats', chatId, { messages: chat.messages, lastMessage: text, time: 'Ahora' })
+    db.addAudit({ action: 'send_message', store: 'chats', detail: `Mensaje enviado en ${chatId}`, userId })
+    return msg
+  },
+}
+
+// Notification service
+export const notificationService = {
+  async getNotifications(userId) {
+    await delay()
+    return db.query('notifications', n => n.userId === userId || !n.userId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+  },
+
+  async create(data) {
+    await delay()
+    const notif = db.insert('notifications', { read: false, ...data })
+    return notif
+  },
+
+  async markAsRead(id) {
+    await delay()
+    return db.update('notifications', id, { read: true })
+  },
+
+  async markAllAsRead(userId) {
+    await delay()
+    const notifs = db.query('notifications', n => (n.userId === userId || !n.userId) && !n.read)
+    notifs.forEach(n => db.update('notifications', n.id, { read: true }))
+    return true
+  },
+
+  async getUnreadCount(userId) {
+    await delay()
+    return db.query('notifications', n => (n.userId === userId || !n.userId) && !n.read).length
+  },
+}
+
+// Seed notifications
+const NOTIFS = [
+  { title: 'Bienvenido a Javaline', message: 'Tu plataforma de gestión empresarial está lista.', type: 'info', userId: 'user_admin' },
+  { title: 'Factura INV-006 pagada', message: 'El cliente Distribuidora Ortiz ha realizado el pago.', type: 'success', userId: 'user_admin' },
+  { title: 'Stock bajo', message: 'Audífonos Bluetooth tiene solo 3 unidades en inventario.', type: 'warning', userId: 'user_admin' },
+]
+;(() => {
+  const existing = db.getAll('notifications')
+  if (existing.length === 0) {
+    NOTIFS.forEach(n => db.insert('notifications', n))
+  }
+})()
+
+export default createEntityService
