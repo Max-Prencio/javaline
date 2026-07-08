@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiShoppingCart, FiPlus, FiX, FiPackage, FiSearch, FiShield } from 'react-icons/fi'
+import { FiShoppingCart, FiPlus, FiX, FiPackage, FiSearch, FiShield, FiCheckCircle, FiRefreshCw } from 'react-icons/fi'
 import { PURCHASES } from '../data/seed'
 import approvalService from '../services/approvalService'
+import inventoryService from '../services/inventoryService'
 import db from '../services/db'
 
 const statusStyles = {
@@ -13,6 +15,7 @@ const statusStyles = {
 }
 
 export default function Purchases() {
+  const navigate = useNavigate()
   const [orders, setOrders] = useState(PURCHASES)
   const [modalOpen, setModalOpen] = useState(false)
   const [approvalModal, setApprovalModal] = useState(false)
@@ -20,9 +23,24 @@ export default function Purchases() {
   const [form, setForm] = useState({ supplier: '', item: '', qty: '', total: '', currency: 'DOP' })
   const [hierarchies, setHierarchies] = useState([])
   const [hForm, setHForm] = useState({ currency: 'DOP', role: '', minAmount: '', maxAmount: '' })
+  const [receivingId, setReceivingId] = useState(null)
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
-  const user = JSON.parse(localStorage.getItem('javaline_session') || '{}')
+  const session = JSON.parse(localStorage.getItem('javaline_session') || '{}')
+  const userId = session.userId || session.id
+  const user = session
+
+  const handleReceive = async (order) => {
+    setReceivingId(order.id)
+    try {
+      await inventoryService.receiveFromPurchase(order, userId)
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'recibido', notes: 'Recibido y registrado en inventario' } : o))
+      db.addAudit({action:'purchase_receive_manual',store:'purchases',detail:`OC ${order.id} recibida manualmente: ${order.item}`,userId})
+      setTimeout(() => setReceivingId(null), 1500)
+    } catch (e) {
+      alert('Error al recibir: ' + e.message)
+      setReceivingId(null)
+    }
+  }
 
   const filtered = orders.filter(ord =>
     ord.supplier.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -126,6 +144,19 @@ export default function Purchases() {
                     <td style={{padding:'14px 20px'}}>
                       <span style={{display:'inline-flex',padding:'4px 14px',borderRadius:20,fontSize:12,fontWeight:600,background:st.bg,color:st.color}}>{st.label}</span>
                       {ord.notes && <p style={{margin:'4px 0 0',fontSize:11,color:'var(--text-muted)'}}>{ord.notes}</p>}
+                      {(ord.status === 'pendiente' || ord.status === 'aprobado') && (
+                        <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.95}} onClick={() => handleReceive(ord)} disabled={receivingId === ord.id}
+                          style={{display:'flex',alignItems:'center',gap:4,marginTop:6,padding:'5px 12px',background:'rgba(34,197,94,0.12)',border:'1px solid rgba(34,197,94,0.25)',borderRadius:8,color:'#22c55e',fontSize:11,fontWeight:600,cursor: receivingId === ord.id ? 'default' : 'pointer',opacity: receivingId === ord.id ? 0.6 : 1}}>
+                          {receivingId === ord.id ? <FiRefreshCw size={12} style={{animation:'spin 1s linear infinite'}} /> : <FiCheckCircle size={12} />}
+                          {receivingId === ord.id ? 'Recibiendo…' : 'Recibir'}
+                        </motion.button>
+                      )}
+                      {ord.status === 'recibido' && (
+                        <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.95}} onClick={() => navigate('/inventory')}
+                          style={{display:'flex',alignItems:'center',gap:4,marginTop:6,padding:'5px 12px',background:'var(--accent-subtle)',border:'1px solid var(--accent-border)',borderRadius:8,color:'var(--accent)',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                          <FiPackage size={12} /> Ver en inventario
+                        </motion.button>
+                      )}
                     </td>
                   </tr>
                 )

@@ -20,6 +20,7 @@ import Register from './pages/Register'
 import AcceptInvite from './pages/AcceptInvite'
 import CashRegister from './pages/CashRegister'
 import Accounting from './pages/Accounting'
+import Inventory from './pages/Inventory'
 import PaperSettings from './pages/PaperSettings'
 import { preloadLogo } from './utils/print'
 
@@ -58,6 +59,7 @@ export default function App() {
               <Route path="/cash-register" element={<CashRegister />} />
               <Route path="/accounting" element={<Accounting />} />
               <Route path="/paper-settings" element={<PaperSettings />} />
+              <Route path="/inventory" element={<Inventory />} />
             </Routes>
           </Layout>
         </PrivateRoute>

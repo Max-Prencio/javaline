@@ -7,7 +7,7 @@ import {
   FiCalendar, FiVideo, FiTrendingUp, FiCheckSquare, FiShield,
   FiLogOut, FiMenu, FiChevronLeft, FiBell, FiSearch,
   FiSun, FiMoon, FiUser, FiMessageCircle, FiBarChart2,
-  FiDollarSign, FiBook
+  FiDollarSign, FiBook, FiPackage
 } from 'react-icons/fi'
 
 const LINKS = [
@@ -16,6 +16,7 @@ const LINKS = [
   { to: '/cash-register', label: 'Caja', icon: FiDollarSign },
   { to: '/crm', label: 'CRM', icon: FiUsers },
   { to: '/hr', label: 'RRHH', icon: FiUserCheck },
+  { to: '/inventory', label: 'Inventario', icon: FiPackage },
   { to: '/purchases', label: 'Compras', icon: FiShoppingCart },
   { to: '/scheduling', label: 'Agenda', icon: FiCalendar },
   { to: '/meetings', label: 'Reuniones', icon: FiVideo },

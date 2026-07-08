@@ -7,7 +7,8 @@ const STORES = ['users', 'profiles', 'invoices', 'contacts', 'employees',
   'purchases', 'products', 'tasks', 'meetings', 'roles', 'chats',
   'notifications', 'invitations', 'settings',
   'currencies', 'cashRegisters', 'accounts', 'journalEntries',
-  'approvalHierarchies', 'taxRates', 'installmentPlans']
+  'approvalHierarchies', 'taxRates', 'installmentPlans',
+  'inventory', 'stockMovements']
 
 function init() {
   STORES.forEach(store => {
@@ -221,6 +222,22 @@ const SEED_DATA = {
     { name: 'Gerente', users: 5, modules: ['Dashboard', 'RRHH', 'Compras', 'Facturación', 'Informes'], permissions: 'alto', level: 3 },
     { name: 'Ventas', users: 8, modules: ['CRM', 'Ventas', 'Agenda', 'Tareas', 'Chat'], permissions: 'medio', level: 2 },
     { name: 'Empleado', users: 15, modules: ['Tareas', 'Agenda', 'Perfil', 'Chat'], permissions: 'básico', level: 1 },
+  ],
+  inventory: [
+    { id: 'INV-001', name: 'Laptop Pro 15', sku: 'LPT-001', category: 'Electrónica', stock: 12, minStock: 5, price: 45000, cost: 35000, location: 'Almacén A', unit: 'unidad', description: 'Laptop profesional 15 pulgadas', active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'INV-002', name: 'Monitor 27" 4K', sku: 'MON-001', category: 'Electrónica', stock: 8, minStock: 3, price: 22000, cost: 17000, location: 'Almacén A', unit: 'unidad', description: 'Monitor 4K 27 pulgadas', active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'INV-003', name: 'Teclado Mecánico', sku: 'TCL-001', category: 'Accesorios', stock: 25, minStock: 10, price: 5500, cost: 3200, location: 'Almacén B', unit: 'unidad', description: 'Teclado mecánico RGB', active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'INV-004', name: 'Mouse Inalámbrico', sku: 'MOU-001', category: 'Accesorios', stock: 30, minStock: 15, price: 3200, cost: 1800, location: 'Almacén B', unit: 'unidad', description: 'Mouse inalámbrico ergonómico', active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'INV-005', name: 'Webcam HD Pro', sku: 'WBC-001', category: 'Electrónica', stock: 15, minStock: 5, price: 8500, cost: 5500, location: 'Almacén A', unit: 'unidad', description: 'Cámara web HD profesional', active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'INV-006', name: 'Audífonos Bluetooth', sku: 'AUD-001', category: 'Audio', stock: 3, minStock: 10, price: 6500, cost: 3800, location: 'Almacén B', unit: 'unidad', description: 'Audífonos Bluetooth con cancelación de ruido', active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'INV-007', name: 'Silla Ergonómica', sku: 'SIL-001', category: 'Muebles', stock: 8, minStock: 3, price: 12000, cost: 8500, location: 'Almacén C', unit: 'unidad', description: 'Silla de oficina ergonómica', active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'INV-008', name: 'Papel Carta (5000 hojas)', sku: 'PAP-001', category: 'Oficina', stock: 100, minStock: 20, price: 250, cost: 180, location: 'Almacén C', unit: 'resma', description: 'Papel tamaño carta 5000 hojas', active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'INV-009', name: 'Tóner Impresora', sku: 'TON-001', category: 'Oficina', stock: 2, minStock: 5, price: 3500, cost: 2200, location: 'Almacén C', unit: 'unidad', description: 'Tóner para impresora láser', active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'INV-010', name: 'Servidor Rack', sku: 'SRV-001', category: 'Electrónica', stock: 0, minStock: 1, price: 90000, cost: 70000, location: 'Data Center', unit: 'unidad', description: 'Servidor rack 2U empresarial', active: true, createdAt: '2026-01-01T00:00:00Z' },
+  ],
+  stockMovements: [
+    { id: 'MOV-001', productId: 'INV-006', productName: 'Audífonos Bluetooth', sku: 'AUD-001', quantity: -2, type: 'out', reason: 'Venta a cliente', beforeStock: 5, afterStock: 3, userId: 'user_admin', date: '2026-06-10T10:00:00Z' },
+    { id: 'MOV-002', productId: 'INV-007', productName: 'Silla Ergonómica', sku: 'SIL-001', quantity: 8, type: 'in', reason: 'Recepción OC-005 — Office Depot', beforeStock: 0, afterStock: 8, userId: 'user_admin', date: '2026-05-25T14:00:00Z' },
   ],
   chats: [
     { id: 'chat_1', name: 'Ana Rosario', lastMessage: 'Ok, entonces quedamos en eso', time: '10:32', unread: 2, online: true, messages: [
