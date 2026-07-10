@@ -1,5 +1,9 @@
+import api from './apiClient'
 import db from './db'
 import accountingService from './accountingService'
+
+const API_PATH = '/cash-registers'
+
 function delay(ms = 200) { return new Promise(r => setTimeout(r, ms)) }
 
 function getNextId() {
@@ -9,14 +13,33 @@ function getNextId() {
   return `CAJ-${String(max + 1).padStart(3, '0')}`
 }
 
+async function tryApi(fn) {
+  try { return await fn() } catch (e) { return null }
+}
+
 const service = {
-  async list() { await delay(); return db.getAll('cashRegisters') },
+  async list() {
+    const res = await tryApi(() => api.get(API_PATH))
+    if (res) return res
+    await delay(); return db.getAll('cashRegisters')
+  },
 
-  async getById(id) { await delay(); return db.getById('cashRegisters', id) },
+  async getById(id) {
+    const res = await tryApi(() => api.get(`${API_PATH}/${id}`))
+    if (res) return res
+    await delay(); return db.getById('cashRegisters', id)
+  },
 
-  async getOpen(userId) { await delay(); const registers = db.query('cashRegisters', r => r.userId === userId && r.status === 'open'); return registers[0] || null },
+  async getOpen(userId) {
+    const res = await tryApi(() => api.get(`${API_PATH}/open/${userId}`))
+    if (res) return res
+    await delay(); const registers = db.query('cashRegisters', r => r.userId === userId && r.status === 'open'); return registers[0] || null
+  },
 
-  async open(userId, initialBalance = 0) { await delay(400);
+  async open(userId, initialBalance = 0) {
+    const res = await tryApi(() => api.post(API_PATH, { userId, initialBalance }))
+    if (res) return res
+    await delay(400);
     const open = await service.getOpen(userId); if (open) throw new Error('Ya hay una caja abierta');
     const register = db.insert('cashRegisters', {
       id: getNextId(), userId, openDate: new Date().toISOString(), closeDate: null,
@@ -27,7 +50,10 @@ const service = {
     return register
   },
 
-  async close(userId) { await delay(500);
+  async close(userId) {
+    const res = await tryApi(() => api.post(`${API_PATH}/close`, { userId }))
+    if (res) return res
+    await delay(500);
     const register = await service.getOpen(userId); if (!register) throw new Error('No hay caja abierta');
     const closed = db.update('cashRegisters', register.id, { status: 'closed', closeDate: new Date().toISOString() })
     try {
@@ -50,7 +76,10 @@ const service = {
     return closed
   },
 
-  async addTransaction(registerId, txn, userId) { await delay(300);
+  async addTransaction(registerId, txn, userId) {
+    const res = await tryApi(() => api.post(`${API_PATH}/${registerId}/transactions`, { ...txn, userId }))
+    if (res) return res
+    await delay(300);
     const register = db.getById('cashRegisters', registerId); if (!register) throw new Error('Caja no encontrada');
     if (register.status !== 'open') throw new Error('La caja está cerrada');
     const t = { id: `TXN-${Date.now()}`, createdAt: new Date().toISOString(), ...txn }
@@ -63,7 +92,10 @@ const service = {
     return updated
   },
 
-  async removeTransaction(registerId, txnId, userId) { await delay(300);
+  async removeTransaction(registerId, txnId, userId) {
+    const res = await tryApi(() => api.delete(`${API_PATH}/${registerId}/transactions/${txnId}?userId=${userId}`))
+    if (res) return res
+    await delay(300);
     const register = db.getById('cashRegisters', registerId); if (!register) throw new Error('Caja no encontrada');
     const transactions = register.transactions.filter(t => t.id !== txnId)
     if (transactions.length === register.transactions.length) throw new Error('Transacción no encontrada');

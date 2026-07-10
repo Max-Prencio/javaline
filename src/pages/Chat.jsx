@@ -1,21 +1,33 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { FiSearch, FiSend, FiUser, FiCheck, FiCircle } from 'react-icons/fi'
-import { CHATS } from '../data/seed'
+import { chatService } from '../services/entityService'
 
 export default function Chat() {
-  const [chats] = useState(CHATS)
-  const [activeChat, setActiveChat] = useState(chats[0])
+  const [chats, setChats] = useState([])
+  const [activeChat, setActiveChat] = useState(null)
   const [message, setMessage] = useState('')
   const [search, setSearch] = useState('')
+
+  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+
+  const load = useCallback(async () => {
+    const data = await chatService.getConversations()
+    setChats(data)
+    if (!activeChat && data.length) setActiveChat(data[0])
+  }, [])
+
+  useEffect(() => { load() }, [load])
 
   const filtered = chats.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase())
   )
 
-  const sendMessage = () => {
-    if (!message.trim()) return
+  const sendMessage = async () => {
+    if (!message.trim() || !activeChat) return
+    await chatService.sendMessage(activeChat.id, message, userId)
     setMessage('')
+    load()
   }
 
   const ChatBubble = ({ msg }) => (

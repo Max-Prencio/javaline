@@ -21,6 +21,11 @@ import AcceptInvite from './pages/AcceptInvite'
 import CashRegister from './pages/CashRegister'
 import Accounting from './pages/Accounting'
 import Inventory from './pages/Inventory'
+import PocketDashboard from './pages/PocketDashboard'
+import InventoryCount from './pages/InventoryCount'
+import DuplicateDetection from './pages/DuplicateDetection'
+import AIAssistant from './pages/AIAssistant'
+import AiContext from './pages/AiContext'
 import PaperSettings from './pages/PaperSettings'
 import { preloadLogo } from './utils/print'
 
@@ -39,6 +44,8 @@ export default function App() {
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
       <Route path="/invite/:code" element={user ? <Navigate to="/" replace /> : <AcceptInvite />} />
+      <Route path="/pocket" element={<PrivateRoute><PocketDashboard /></PrivateRoute>} />
+      <Route path="/pocket/count" element={<PrivateRoute><InventoryCount /></PrivateRoute>} />
       <Route path="/*" element={
         <PrivateRoute>
           <Layout>
@@ -60,6 +67,9 @@ export default function App() {
               <Route path="/accounting" element={<Accounting />} />
               <Route path="/paper-settings" element={<PaperSettings />} />
               <Route path="/inventory" element={<Inventory />} />
+              <Route path="/admin/duplicates" element={<DuplicateDetection />} />
+              <Route path="/ai-assistant" element={<AIAssistant />} />
+              <Route path="/ai-context" element={<AiContext />} />
             </Routes>
           </Layout>
         </PrivateRoute>

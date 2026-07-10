@@ -9,8 +9,12 @@ class InventoryItem(Base):
     __tablename__ = "inventory"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String(50), default="default", index=True)
     name = Column(String(255), nullable=False, index=True)
     sku = Column(String(100), unique=True, nullable=False)
+    shelf = Column(String(50), default="")
+    row = Column(String(50), default="")
+    box = Column(String(50), default="")
     category = Column(String(100), default="General")
     stock = Column(Integer, default=0)
     min_stock = Column(Integer, default=10)
@@ -18,6 +22,8 @@ class InventoryItem(Base):
     cost = Column(Float, default=0)
     location = Column(String(100), default="")
     unit = Column(String(50), default="unidad")
+    batch = Column(String(100), default="")
+    expiry_date = Column(String(10), default="")
     description = Column(Text, default="")
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

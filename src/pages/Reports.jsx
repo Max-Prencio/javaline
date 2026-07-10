@@ -1,7 +1,8 @@
+import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { FiTrendingUp, FiDollarSign, FiFileText, FiUsers, FiShoppingBag, FiSettings } from 'react-icons/fi'
-import { INVOICES, CONTACTS, PRODUCTS, MONTHLY_REVENUE } from '../data/seed'
+import { invoiceService, contactService, productService } from '../services/entityService'
 
 function KpiCard({ icon: Icon, label, value, sub }) {
   return (
@@ -19,8 +20,29 @@ function KpiCard({ icon: Icon, label, value, sub }) {
   )
 }
 
+const MONTHLY_REVENUE = [
+  { month: 'Ene', ingresos: 320000, gastos: 180000, facturas: 12 },
+  { month: 'Feb', ingresos: 280000, gastos: 165000, facturas: 10 },
+  { month: 'Mar', ingresos: 450000, gastos: 210000, facturas: 15 },
+  { month: 'Abr', ingresos: 380000, gastos: 195000, facturas: 13 },
+  { month: 'May', ingresos: 520000, gastos: 240000, facturas: 18 },
+  { month: 'Jun', ingresos: 610000, gastos: 275000, facturas: 20 },
+]
+
 export default function Reports() {
   const navigate = useNavigate()
+  const [invoices, setInvoices] = useState([])
+  const [contacts, setContacts] = useState([])
+  const [products, setProducts] = useState([])
+
+  const load = useCallback(async () => {
+    setInvoices(await invoiceService.list())
+    setContacts(await contactService.list())
+    setProducts(await productService.list())
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
   const totalIngresos = MONTHLY_REVENUE.reduce((s, r) => s + r.ingresos, 0)
   const totalGastos = MONTHLY_REVENUE.reduce((s, r) => s + r.gastos, 0)
   const totalFacturas = MONTHLY_REVENUE.reduce((s, r) => s + r.facturas, 0)
@@ -43,8 +65,8 @@ export default function Reports() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard icon={FiDollarSign} label="Ingresos Totales" value={`$${(totalIngresos/1000).toFixed(0)}K`} sub="Últimos 6 meses" />
         <KpiCard icon={FiTrendingUp} label="Ganancia Neta" value={`$${(ganancia/1000).toFixed(0)}K`} sub={`${((ganancia/totalIngresos)*100).toFixed(0)}% margen`} />
-        <KpiCard icon={FiFileText} label="Facturas Emitidas" value={totalFacturas.toString()} sub={`${INVOICES.filter(i => i.status === 'pagada').length} pagadas`} />
-        <KpiCard icon={FiUsers} label="Clientes Activos" value={CONTACTS.filter(c => c.stage === 'cliente').length.toString()} sub={`${CONTACTS.length} contactos total`} />
+        <KpiCard icon={FiFileText} label="Facturas Emitidas" value={totalFacturas.toString()} sub={`${invoices.filter(i => i.status === 'pagada' || i.status === 'paid').length} pagadas`} />
+        <KpiCard icon={FiUsers} label="Clientes Activos" value={contacts.filter(c => c.stage === 'cliente').length.toString()} sub={`${contacts.length} contactos total`} />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
@@ -85,19 +107,24 @@ export default function Reports() {
         <div className="rounded-xl p-5" style={{background: 'var(--bg-card)', border: '1px solid var(--border)'}}>
           <h3 className="text-sm font-semibold mb-4" style={{color: 'var(--text-primary)'}}>Distribución de Facturas</h3>
           <div className="space-y-3">
-            {['pagada', 'pendiente', 'vencida'].map(status => {
-              const count = INVOICES.filter(i => i.status === status).length
-              const pct = (count / INVOICES.length) * 100
-              const colors = { pagada: 'var(--success)', pendiente: 'var(--accent)', vencida: 'var(--danger)' }
-              const labels = { pagada: 'Pagadas', pendiente: 'Pendientes', vencida: 'Vencidas' }
+            {[
+              { status: 'pagada', label: 'Pagadas', color: 'var(--success)' },
+              { status: 'paid', label: 'Pagadas', color: 'var(--success)' },
+              { status: 'pendiente', label: 'Pendientes', color: 'var(--accent)' },
+              { status: 'pending', label: 'Pendientes', color: 'var(--accent)' },
+              { status: 'vencida', label: 'Vencidas', color: 'var(--danger)' },
+              { status: 'overdue', label: 'Vencidas', color: 'var(--danger)' },
+            ].map(({ status, label, color }) => {
+              const count = invoices.filter(i => i.status === status).length
+              const pct = invoices.length ? (count / invoices.length) * 100 : 0
               return (
                 <div key={status}>
                   <div className="flex justify-between text-xs mb-1">
-                    <span style={{color: 'var(--text-primary)'}}>{labels[status]}</span>
+                    <span style={{color: 'var(--text-primary)'}}>{label}</span>
                     <span style={{color: 'var(--text-muted)'}}>{count} ({pct.toFixed(0)}%)</span>
                   </div>
                   <div className="h-2 rounded-full" style={{background: 'var(--bg-secondary)'}}>
-                    <div className="h-full rounded-full transition-all" style={{width: `${pct}%`, background: colors[status]}} />
+                    <div className="h-full rounded-full transition-all" style={{width: `${pct}%`, background: color}} />
                   </div>
                 </div>
               )
@@ -123,7 +150,7 @@ export default function Reports() {
               </tr>
             </thead>
             <tbody>
-              {PRODUCTS.sort((a, b) => b.sales - a.sales).map((p, i) => (
+              {[...products].sort((a, b) => (b.sales || 0) - (a.sales || 0)).map((p, i) => (
                 <tr key={i} style={{borderBottom: '1px solid var(--border)'}}>
                   <td className="px-4 py-3 font-medium" style={{color: 'var(--text-primary)'}}>{p.name}</td>
                   <td className="px-4 py-3">

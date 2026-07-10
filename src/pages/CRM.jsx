@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiUsers, FiPlus, FiX, FiMail, FiPhone, FiUser, FiSearch } from 'react-icons/fi'
-import { CONTACTS } from '../data/seed'
+import { contactService } from '../services/entityService'
 
 const STAGES = [
   { key: 'lead', label: 'Leads', borderColor: 'var(--accent)' },
@@ -23,19 +23,29 @@ const containerVariants = {
 }
 
 export default function CRM() {
-  const [contacts, setContacts] = useState(CONTACTS)
+  const [contacts, setContacts] = useState([])
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [form, setForm] = useState({ name: '', company: '', email: '', phone: '', stage: 'lead' })
 
+  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+
+  const load = useCallback(async () => {
+    const data = await contactService.list()
+    setContacts(data)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value })
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.name || !form.email) return
-    setContacts([...contacts, { ...form, id: Date.now().toString() }])
+    await contactService.create({ ...form, type: 'company' }, userId)
     setOpen(false)
     setForm({ name: '', company: '', email: '', phone: '', stage: 'lead' })
+    load()
   }
 
   const filteredContacts = contacts.filter(

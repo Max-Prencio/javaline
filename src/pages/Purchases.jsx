@@ -1,22 +1,22 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiShoppingCart, FiPlus, FiX, FiPackage, FiSearch, FiShield, FiCheckCircle, FiRefreshCw } from 'react-icons/fi'
-import { PURCHASES } from '../data/seed'
+import { FiShoppingCart, FiPlus, FiX, FiPackage, FiSearch, FiShield, FiCheckCircle, FiRefreshCw, FiUser, FiClock, FiDollarSign, FiThumbsUp, FiThumbsDown } from 'react-icons/fi'
 import approvalService from '../services/approvalService'
 import inventoryService from '../services/inventoryService'
-import db from '../services/db'
+import api from '../services/apiClient'
 
 const statusStyles = {
   recibido: { bg: 'var(--success)', color: '#fff', label: 'Recibido' },
-  pendiente: { bg: 'var(--warning)', color: '#fff', label: 'Pendiente' },
   aprobado: { bg: '#6366f1', color: '#fff', label: 'Aprobado' },
   rechazado: { bg: '#ef4444', color: '#fff', label: 'Rechazado' },
+  solicitud: { bg: '#f59e0b', color: '#fff', label: 'Solicitud' },
+  pending_approval: { bg: '#f97316', color: '#fff', label: 'Pendiente Aprob.' },
 }
 
 export default function Purchases() {
   const navigate = useNavigate()
-  const [orders, setOrders] = useState(PURCHASES)
+  const [orders, setOrders] = useState([])
   const [modalOpen, setModalOpen] = useState(false)
   const [approvalModal, setApprovalModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -24,17 +24,41 @@ export default function Purchases() {
   const [hierarchies, setHierarchies] = useState([])
   const [hForm, setHForm] = useState({ currency: 'DOP', role: '', minAmount: '', maxAmount: '' })
   const [receivingId, setReceivingId] = useState(null)
+  const [selectedOrder, setSelectedOrder] = useState(null)
+  const [approveModal, setApproveModal] = useState(false)
+  const [approveComment, setApproveComment] = useState('')
+  const [approveAmount, setApproveAmount] = useState('')
+  const [approvalInfo, setApprovalInfo] = useState({})
+  const [loading, setLoading] = useState(true)
 
   const session = JSON.parse(localStorage.getItem('javaline_session') || '{}')
   const userId = session.userId || session.id
-  const user = session
+
+  const loadOrders = async () => {
+    setLoading(true)
+    try {
+      const data = await api.get('/purchases')
+      setOrders(data)
+
+      const history = await approvalService.getApprovalHistory()
+      const info = {}
+      history.forEach(a => {
+        info[a.purchase_order_id] = a
+      })
+      setApprovalInfo(info)
+    } catch (e) {
+      console.error('Error loading orders:', e)
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => { loadOrders() }, [])
 
   const handleReceive = async (order) => {
     setReceivingId(order.id)
     try {
       await inventoryService.receiveFromPurchase(order, userId)
-      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: 'recibido', notes: 'Recibido y registrado en inventario' } : o))
-      db.addAudit({action:'purchase_receive_manual',store:'purchases',detail:`OC ${order.id} recibida manualmente: ${order.item}`,userId})
+      loadOrders()
       setTimeout(() => setReceivingId(null), 1500)
     } catch (e) {
       alert('Error al recibir: ' + e.message)
@@ -49,20 +73,55 @@ export default function Purchases() {
 
   const totalOrdenes = orders.length
   const totalInvertido = orders.reduce((s, o) => s + o.total, 0)
-  const pendientes = orders.filter(o => o.status === 'pendiente').length
+  const pendientes = orders.filter(o => o.status === 'solicitud' || o.status === 'pending_approval').length
 
   const handleChange = (e) => { setForm(prev => ({ ...prev, [e.target.name]: e.target.value })) }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.supplier || !form.item || !form.qty || !form.total) return
-    const approval = await approvalService.canApprove(form.currency, Number(form.total), user.role)
-    const status = approval.allowed ? 'aprobado' : 'pendiente'
-    const nextId = `OC-${String(orders.length + 1).padStart(3, '0')}`
-    setOrders(prev => [{ id: nextId, supplier: form.supplier, item: form.item, qty: Number(form.qty), total: Number(form.total), status, currency: form.currency, notes: approval.allowed ? '' : `Requiere aprobación de ${approval.requiredRole || 'admin'}` }, ...prev])
-    db.addAudit({action:'create_purchase',store:'purchases',detail:`OC ${nextId}: ${form.supplier} - $${form.total} ${form.currency}`,userId})
-    setForm({ supplier: '', item: '', qty: '', total: '', currency: 'DOP' })
-    setModalOpen(false)
+    try {
+      await api.post('/purchases', {
+        supplier: form.supplier,
+        item: form.item,
+        qty: Number(form.qty),
+        total: Number(form.total),
+        currency: form.currency,
+      })
+      setForm({ supplier: '', item: '', qty: '', total: '', currency: 'DOP' })
+      setModalOpen(false)
+      loadOrders()
+    } catch (e) {
+      alert('Error al crear orden: ' + e.message)
+    }
+  }
+
+  const handleApprove = async () => {
+    if (!selectedOrder) return
+    try {
+      await approvalService.approveOrder(selectedOrder.id, {
+        amount_approved: Number(approveAmount) || selectedOrder.total,
+        comment: approveComment,
+      })
+      setApproveModal(false)
+      setSelectedOrder(null)
+      setApproveComment('')
+      setApproveAmount('')
+      loadOrders()
+    } catch (e) {
+      alert('Error al aprobar: ' + e.message)
+    }
+  }
+
+  const handleReject = async (order) => {
+    const reason = prompt('Motivo del rechazo:')
+    if (reason === null) return
+    try {
+      await approvalService.rejectOrder(order.id, { comment: reason })
+      loadOrders()
+    } catch (e) {
+      alert('Error al rechazar: ' + e.message)
+    }
   }
 
   const loadHierarchies = async () => {
@@ -73,7 +132,6 @@ export default function Purchases() {
   const handleAddHierarchy = async () => {
     if (!hForm.role || !hForm.minAmount || !hForm.maxAmount) return
     await approvalService.createHierarchy(hForm, userId)
-    db.addAudit({action:'create_hierarchy',store:'approvalHierarchies',detail:`Jerarquía: ${hForm.currency} ${hForm.role}`,userId})
     setHForm({ currency: 'DOP', role: '', minAmount: '', maxAmount: '' })
     loadHierarchies()
   }
@@ -104,15 +162,13 @@ export default function Purchases() {
         <div style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:16,marginBottom:32}}>
           {[
             { label:'Total órdenes', value: totalOrdenes, color:'var(--accent)' },
-            { label:'Total invertido', value: totalInvertido, color:'var(--success)' },
+            { label:'Total invertido', value: `$${totalInvertido.toLocaleString('es-DO')}`, color:'var(--success)' },
             { label:'Pendientes', value: pendientes, color:'var(--warning)' },
           ].map(item => (
             <motion.div key={item.label} initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} transition={{duration:0.4}}
               style={{display:'flex',flexDirection:'column',gap:6,padding:'20px 24px',background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:14}}>
               <span style={{color:'var(--text-muted)',fontSize:12,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.5px'}}>{item.label}</span>
-              <span style={{fontSize:26,fontWeight:700,letterSpacing:'-0.5px',color:item.color}}>
-                {item.label === 'Total invertido' ? `$${item.value.toLocaleString('es-DO')}` : item.value}
-              </span>
+              <span style={{fontSize:26,fontWeight:700,letterSpacing:'-0.5px',color:item.color}}>{item.value}</span>
             </motion.div>
           ))}
         </div>
@@ -124,15 +180,19 @@ export default function Purchases() {
         </div>
 
         <div style={{background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:14,overflow:'hidden'}}>
+          {loading ? (
+            <div style={{padding:40,textAlign:'center',color:'var(--text-muted)'}}>Cargando órdenes...</div>
+          ) : (
           <table style={{width:'100%',borderCollapse:'collapse'}}>
             <thead><tr>
-              {['OC#','Proveedor','Artículo','Cant','Moneda','Total','Estado'].map(h => (
+              {['OC#','Proveedor','Artículo','Cant','Moneda','Total','Estado','Acciones'].map(h => (
                 <th key={h} style={{textAlign:'left',padding:'14px 20px',color:'var(--text-muted)',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.6px',borderBottom:'1px solid var(--border)',background:'var(--bg-card)'}}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
               {filtered.map(ord => {
-                const st = statusStyles[ord.status] || statusStyles.pendiente
+                const st = statusStyles[ord.status] || statusStyles.solicitud
+                const app = approvalInfo[ord.id]
                 return (
                   <tr key={ord.id} style={{borderBottom:'1px solid var(--border-light)'}}>
                     <td style={{padding:'14px 20px',color:'var(--text-muted)',fontSize:13,fontFamily:"'JetBrains Mono', monospace"}}>{ord.id}</td>
@@ -143,31 +203,55 @@ export default function Purchases() {
                     <td style={{padding:'14px 20px',fontSize:14,fontWeight:600,color:'var(--text-primary)'}}>${ord.total.toLocaleString('es-DO')}</td>
                     <td style={{padding:'14px 20px'}}>
                       <span style={{display:'inline-flex',padding:'4px 14px',borderRadius:20,fontSize:12,fontWeight:600,background:st.bg,color:st.color}}>{st.label}</span>
-                      {ord.notes && <p style={{margin:'4px 0 0',fontSize:11,color:'var(--text-muted)'}}>{ord.notes}</p>}
-                      {(ord.status === 'pendiente' || ord.status === 'aprobado') && (
-                        <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.95}} onClick={() => handleReceive(ord)} disabled={receivingId === ord.id}
-                          style={{display:'flex',alignItems:'center',gap:4,marginTop:6,padding:'5px 12px',background:'rgba(34,197,94,0.12)',border:'1px solid rgba(34,197,94,0.25)',borderRadius:8,color:'#22c55e',fontSize:11,fontWeight:600,cursor: receivingId === ord.id ? 'default' : 'pointer',opacity: receivingId === ord.id ? 0.6 : 1}}>
-                          {receivingId === ord.id ? <FiRefreshCw size={12} style={{animation:'spin 1s linear infinite'}} /> : <FiCheckCircle size={12} />}
-                          {receivingId === ord.id ? 'Recibiendo…' : 'Recibir'}
-                        </motion.button>
+                      {app && (
+                        <div style={{marginTop:6,fontSize:10,color:'var(--text-muted)',lineHeight:1.6}}>
+                          <div style={{display:'flex',alignItems:'center',gap:3}}><FiUser size={10} /> {app.approver?.name || app.approved_by}</div>
+                          <div style={{display:'flex',alignItems:'center',gap:3}}><FiClock size={10} /> {new Date(app.approved_at).toLocaleString('es-DO')}</div>
+                          <div style={{display:'flex',alignItems:'center',gap:3}}><FiDollarSign size={10} /> ${(app.amount_approved || ord.total).toLocaleString('es-DO')}</div>
+                        </div>
                       )}
-                      {ord.status === 'recibido' && (
-                        <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.95}} onClick={() => navigate('/inventory')}
-                          style={{display:'flex',alignItems:'center',gap:4,marginTop:6,padding:'5px 12px',background:'var(--accent-subtle)',border:'1px solid var(--accent-border)',borderRadius:8,color:'var(--accent)',fontSize:11,fontWeight:600,cursor:'pointer'}}>
-                          <FiPackage size={12} /> Ver en inventario
-                        </motion.button>
-                      )}
+                    </td>
+                    <td style={{padding:'14px 20px'}}>
+                      <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                        {(ord.status === 'solicitud' || ord.status === 'pending_approval') && (session.role === 'admin' || session.role === 'manager') && (
+                          <>
+                            <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.95}} onClick={() => { setSelectedOrder(ord); setApproveAmount(String(ord.total)); setApproveComment(''); setApproveModal(true) }}
+                              style={{display:'flex',alignItems:'center',gap:4,padding:'5px 12px',background:'rgba(99,102,241,0.12)',border:'1px solid rgba(99,102,241,0.25)',borderRadius:8,color:'#6366f1',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                              <FiThumbsUp size={11} /> Aprobar
+                            </motion.button>
+                            <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.95}} onClick={() => handleReject(ord)}
+                              style={{display:'flex',alignItems:'center',gap:4,padding:'5px 12px',background:'rgba(239,68,68,0.12)',border:'1px solid rgba(239,68,68,0.25)',borderRadius:8,color:'#ef4444',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                              <FiThumbsDown size={11} /> Rechazar
+                            </motion.button>
+                          </>
+                        )}
+                        {ord.status === 'aprobado' && (
+                          <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.95}} onClick={() => handleReceive(ord)} disabled={receivingId === ord.id}
+                            style={{display:'flex',alignItems:'center',gap:4,padding:'5px 12px',background:'rgba(34,197,94,0.12)',border:'1px solid rgba(34,197,94,0.25)',borderRadius:8,color:'#22c55e',fontSize:11,fontWeight:600,cursor: receivingId === ord.id ? 'default' : 'pointer',opacity: receivingId === ord.id ? 0.6 : 1}}>
+                            {receivingId === ord.id ? <FiRefreshCw size={12} style={{animation:'spin 1s linear infinite'}} /> : <FiCheckCircle size={12} />}
+                            {receivingId === ord.id ? 'Recibiendo…' : 'Recibir'}
+                          </motion.button>
+                        )}
+                        {ord.status === 'recibido' && (
+                          <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.95}} onClick={() => navigate('/inventory')}
+                            style={{display:'flex',alignItems:'center',gap:4,padding:'5px 12px',background:'var(--accent-subtle)',border:'1px solid var(--accent-border)',borderRadius:8,color:'var(--accent)',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                            <FiPackage size={12} /> Ver inventario
+                          </motion.button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
+          )}
         </div>
       </div>
 
       <CreateOrderModal open={modalOpen} onClose={() => setModalOpen(false)} form={form} onChange={handleChange} onSubmit={handleSubmit} />
       <ApprovalModal open={approvalModal} onClose={() => setApprovalModal(false)} hierarchies={hierarchies} hForm={hForm} setHForm={setHForm} onAdd={handleAddHierarchy} load={loadHierarchies} />
+      <ApproveActionModal open={approveModal} onClose={() => setApproveModal(false)} order={selectedOrder} amount={approveAmount} setAmount={setApproveAmount} comment={approveComment} setComment={setApproveComment} onApprove={handleApprove} />
     </div>
   )
 }
@@ -284,6 +368,51 @@ function ApprovalModal({ open, onClose, hierarchies, hForm, setHForm, onAdd, loa
               </table>
             </div>
           )}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
+function ApproveActionModal({ open, onClose, order, amount, setAmount, comment, setComment, onApprove }) {
+  if (!open || !order) return null
+  return (
+    <AnimatePresence>
+      <motion.div key="backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+        style={{position:'fixed',inset:0,zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)'}} onClick={onClose}>
+        <motion.div key="modal" initial={{opacity:0,scale:0.92,y:20}} animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,scale:0.95,y:10}} onClick={e => e.stopPropagation()}
+          style={{width:480,padding:'32px 36px',background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:20,boxShadow:'0 30px 80px rgba(0,0,0,0.6)'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <FiThumbsUp style={{color:'#6366f1',fontSize:22}} />
+              <h2 style={{color:'var(--text-primary)',fontSize:20,fontWeight:700,margin:0}}>Aprobar Orden</h2>
+            </div>
+            <motion.button whileHover={{rotate:90}} onClick={onClose}
+              style={{display:'flex',padding:8,background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:10,color:'var(--text-muted)',cursor:'pointer'}}><FiX size={20} /></motion.button>
+          </div>
+
+          <div style={{padding:'16px',background:'var(--bg-elevated)',borderRadius:12,marginBottom:20}}>
+            <p style={{margin:0,fontSize:13,color:'var(--text-muted)'}}>{order.id} — {order.supplier}</p>
+            <p style={{margin:'4px 0 0',fontSize:15,fontWeight:600,color:'var(--text-primary)'}}>{order.item} x{order.qty}</p>
+            <p style={{margin:'4px 0 0',fontSize:14,color:'var(--accent)'}}>${order.total.toLocaleString('es-DO')} {order.currency}</p>
+          </div>
+
+          <div style={{marginBottom:16}}>
+            <label style={{fontSize:12,color:'var(--text-muted)',fontWeight:600,textTransform:'uppercase',display:'block',marginBottom:6}}>Monto a aprobar</label>
+            <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+              style={{width:'100%',padding:'13px 14px',background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:10,color:'var(--text-primary)',fontSize:14,outline:'none',boxSizing:'border-box'}} />
+          </div>
+
+          <div style={{marginBottom:24}}>
+            <label style={{fontSize:12,color:'var(--text-muted)',fontWeight:600,textTransform:'uppercase',display:'block',marginBottom:6}}>Comentario (opcional)</label>
+            <textarea value={comment} onChange={e => setComment(e.target.value)} rows={3}
+              style={{width:'100%',padding:'13px 14px',background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:10,color:'var(--text-primary)',fontSize:14,outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box'}} />
+          </div>
+
+          <motion.button whileHover={{scale:1.01}} whileTap={{scale:0.98}} onClick={onApprove}
+            style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'14px 0',width:'100%',background:'linear-gradient(135deg,#6366f1,#8b5cf6)',border:'none',borderRadius:10,color:'#fff',fontSize:15,fontWeight:600,cursor:'pointer'}}>
+            <FiCheckCircle size={18} /> Confirmar Aprobación
+          </motion.button>
         </motion.div>
       </motion.div>
     </AnimatePresence>

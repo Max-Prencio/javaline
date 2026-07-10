@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import authService from '../services/authService'
+import api from '../services/apiClient'
 import notificationService from '../services/notificationService'
 import securityService from '../services/securityService'
 
@@ -59,14 +60,9 @@ export function AuthProvider({ children }) {
     try {
       const result = await authService.login(email, password)
       setError('')
-
-      if (result.twoFactorRequired) {
-        return { twoFactorRequired: true, tempUser: result.tempUser }
-      }
-
       setUser(result)
       setSessionExpiresAt(Date.now() + 30 * 60 * 1000)
-      notificationService.getUnreadCount(result.id).then(setUnreadNotifs).catch(() => {})
+      if (result.id) notificationService.getUnreadCount(result.id).then(setUnreadNotifs).catch(() => {})
       return true
     } catch (e) {
       setError(e.message || 'Error al iniciar sesión')
@@ -93,7 +89,6 @@ export function AuthProvider({ children }) {
       setUser(u)
       setError('')
       setSessionExpiresAt(Date.now() + 30 * 60 * 1000)
-      securityService.createSession(u)
       return true
     } catch (e) {
       setError(e.message || 'Error al registrar')
@@ -143,6 +138,7 @@ export function AuthProvider({ children }) {
   }, [user])
 
   const logout = useCallback(() => {
+    api.clearToken()
     securityService.destroySession()
     setUser(null)
     setError('')

@@ -1,8 +1,18 @@
+import api from './apiClient'
 import db from './db'
+
+const API_MAP = {
+  'products': '/inventory',
+  'invoices': '/invoices',
+  'contacts': '/contacts',
+  'employees': '/users',
+  'purchases': '/purchases',
+}
 
 function delay(ms = 200) { return new Promise(r => setTimeout(r, ms)) }
 
 function createEntityService(store, label) {
+  const apiPath = API_MAP[store]
 
   function getNextId(prefix) {
     const items = db.getAll(store)
@@ -13,8 +23,20 @@ function createEntityService(store, label) {
     return `${prefix}-${String(max + 1).padStart(3, '0')}`
   }
 
+  async function tryApi(fn) {
+    if (!apiPath) return null
+    try { return await fn() } catch (e) { console.warn(`[entityService] API ${store} fallback: ${e.message}`); return null }
+  }
+
   return {
     async list(filters = {}) {
+      const apiResult = await tryApi(async () => {
+        const params = new URLSearchParams()
+        Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v) })
+        const qs = params.toString()
+        return api.get(`${apiPath}${qs ? '?' + qs : ''}`)
+      })
+      if (apiResult) return apiResult
       await delay()
       let items = db.getAll(store)
       Object.entries(filters).forEach(([key, val]) => {
@@ -28,11 +50,15 @@ function createEntityService(store, label) {
     },
 
     async getById(id) {
+      const apiResult = await tryApi(() => api.get(`${apiPath}/${id}`))
+      if (apiResult) return apiResult
       await delay()
       return db.getById(store, id)
     },
 
     async create(data, userId = 'system') {
+      const apiResult = await tryApi(() => api.post(apiPath, data))
+      if (apiResult) return apiResult
       await delay(400)
       const item = db.insert(store, data)
       db.addAudit({ action: 'create', store, detail: `${label} creado: ${item.id || item.name || JSON.stringify(item).slice(0,50)}`, userId })
@@ -40,6 +66,8 @@ function createEntityService(store, label) {
     },
 
     async update(id, changes, userId = 'system') {
+      const apiResult = await tryApi(() => api.put(`${apiPath}/${id}`, changes))
+      if (apiResult) return apiResult
       await delay(300)
       const item = db.update(store, id, changes)
       if (!item) throw new Error(`${label} no encontrado`)
@@ -48,6 +76,8 @@ function createEntityService(store, label) {
     },
 
     async remove(id, userId = 'system') {
+      const apiResult = await tryApi(() => api.delete(`${apiPath}/${id}`))
+      if (apiResult) return true
       await delay(300)
       const ok = db.remove(store, id)
       if (!ok) throw new Error(`${label} no encontrado`)
@@ -56,6 +86,11 @@ function createEntityService(store, label) {
     },
 
     async getStats() {
+      const apiResult = await tryApi(async () => {
+        const items = await api.get(apiPath)
+        return { total: items.length, items }
+      })
+      if (apiResult) return apiResult
       await delay()
       const items = db.getAll(store)
       return { total: items.length, items }
@@ -65,7 +100,6 @@ function createEntityService(store, label) {
   }
 }
 
-// Create all entity services
 export const invoiceService = createEntityService('invoices', 'Factura')
 
 export const invoiceBusinessLogic = {
@@ -144,7 +178,6 @@ export const productBusinessLogic = {
   },
 }
 
-// Chat service
 export const chatService = {
   async getConversations() {
     await delay()
@@ -171,7 +204,6 @@ export const chatService = {
   },
 }
 
-// Notification service
 export const notificationService = {
   async getNotifications(userId) {
     await delay()
@@ -202,7 +234,6 @@ export const notificationService = {
   },
 }
 
-// Seed notifications
 const NOTIFS = [
   { title: 'Bienvenido a Javaline', message: 'Tu plataforma de gestión empresarial está lista.', type: 'info', userId: 'user_admin' },
   { title: 'Factura INV-006 pagada', message: 'El cliente Distribuidora Ortiz ha realizado el pago.', type: 'success', userId: 'user_admin' },

@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiCalendar, FiPlus, FiX, FiClock, FiUsers, FiMapPin } from 'react-icons/fi'
-import { MEETINGS } from '../data/seed'
+import { meetingService } from '../services/entityService'
 
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
@@ -21,18 +21,28 @@ const cardVariants = {
 }
 
 export default function Scheduling() {
-  const [meetings, setMeetings] = useState(MEETINGS)
+  const [meetings, setMeetings] = useState([])
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ title: '', date: '', time: '', attendees: '', room: '' })
 
+  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+
+  const load = useCallback(async () => {
+    const data = await meetingService.list()
+    setMeetings(data)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value })
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.title || !form.date) return
-    setMeetings([...meetings, { ...form, attendees: Number(form.attendees) || 0 }])
+    await meetingService.create({ ...form, attendees: Number(form.attendees) || 0 }, userId)
     setOpen(false)
     setForm({ title: '', date: '', time: '', attendees: '', room: '' })
+    load()
   }
 
   return (

@@ -4,7 +4,7 @@ import { FiShield, FiUsers, FiCheck, FiMinus, FiSearch, FiClock, FiKey, FiSmartp
 import { useAuth } from '../contexts/AuthContext'
 import securityService from '../services/securityService'
 import authService from '../services/authService'
-import { ROLES } from '../data/seed'
+import { roleService } from '../services/entityService'
 
 const MODULES = ['Dashboard', 'Facturación', 'CRM', 'RRHH', 'Compras', 'Agenda', 'Reuniones', 'Ventas', 'Tareas']
 
@@ -32,6 +32,7 @@ export default function Security() {
   const [auditLog, setAuditLog] = useState([])
   const [securityScore, setSecurityScore] = useState(null)
   const [users, setUsers] = useState([])
+  const [roles, setRoles] = useState([])
   const [show2FASetup, setShow2FASetup] = useState(false)
   const [twoFactorSecret, setTwoFactorSecret] = useState('')
   const [twoFactorCode, setTwoFactorCode] = useState('')
@@ -44,10 +45,11 @@ export default function Security() {
     securityService.getSecurityAudit(null, 50).then(setAuditLog)
     setSecurityScore(securityService.getSecurityScore())
     authService.getUsers().then(setUsers)
+    roleService.list().then(setRoles)
     setSessionInfo(securityService.getSession())
   }, [])
 
-  const filteredRoles = ROLES.filter((r) => r.name.toLowerCase().includes(search.toLowerCase()))
+  const filteredRoles = roles.filter((r) => (r.name || '').toLowerCase().includes(search.toLowerCase()))
 
   const handleEnable2FA = () => {
     const { formatted } = securityService.generateTwoFactorSecret()

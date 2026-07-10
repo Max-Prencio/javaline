@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FiCheckSquare, FiPlus, FiX, FiUser, FiFlag, FiSearch } from 'react-icons/fi'
-import { TASKS } from '../data/seed'
+import { taskService } from '../services/entityService'
 
 const COLUMNS = [
   { key: 'todo', label: 'Por Hacer', bg: 'var(--bg-elevated)' },
@@ -95,18 +95,28 @@ function TaskCard({ task }) {
 }
 
 export default function Tasks() {
-  const [tasks, setTasks] = useState(TASKS)
+  const [tasks, setTasks] = useState([])
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState(defaultForm)
   const [search, setSearch] = useState('')
 
+  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+
+  const load = useCallback(async () => {
+    const data = await taskService.list()
+    setTasks(data)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value })
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    setTasks([...tasks, { id: Date.now(), ...form }])
+    await taskService.create(form, userId)
     setForm(defaultForm)
     setOpen(false)
+    load()
   }
 
   const filtered = tasks.filter((t) =>

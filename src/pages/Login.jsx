@@ -144,7 +144,7 @@ export default function Login() {
         </div>
         <div style={styles.demoBox}>
           <span style={styles.demoLabel}>Demo</span>
-          <code style={styles.demoCode}>admin@javaline.app / admin123</code>
+          <code style={styles.demoCode}>admin@javaline.com / admin123</code>
         </div>
         <p style={styles.footer}>Javaline — Plataforma de gestión empresarial</p>
       </motion.div>

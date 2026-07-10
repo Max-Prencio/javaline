@@ -25,7 +25,7 @@ export default function Inventory() {
   const [modalOpen, setModalOpen] = useState(null)
   const [moveModal, setMoveModal] = useState(null)
   const [expandedMovements, setExpandedMovements] = useState({})
-  const [form, setForm] = useState({ name: '', sku: '', category: 'General', stock: '', minStock: '10', price: '', cost: '', location: '', unit: 'unidad', description: '' })
+  const [form, setForm] = useState({ name: '', sku: '', category: 'General', stock: '', minStock: '10', price: '', cost: '', location: '', unit: 'unidad', description: '', batch: '', expiry_date: '' })
   const [moveForm, setMoveForm] = useState({ quantity: '', reason: '', type: 'in' })
   const [editId, setEditId] = useState(null)
 
@@ -62,6 +62,7 @@ export default function Inventory() {
       stock: String(item.stock || 0), minStock: String(item.minStock || 10),
       price: String(item.price || 0), cost: String(item.cost || 0),
       location: item.location || '', unit: item.unit || 'unidad', description: item.description || '',
+      batch: item.batch || '', expiry_date: item.expiry_date || '',
     })
     setModalOpen(true)
   }
@@ -74,6 +75,7 @@ export default function Inventory() {
         name: form.name, sku: form.sku, category: form.category,
         minStock: Number(form.minStock), price: Number(form.price), cost: Number(form.cost),
         location: form.location, unit: form.unit, description: form.description,
+        batch: form.batch, expiry_date: form.expiry_date,
       }, userId)
     } else {
       await inventoryService.create({
@@ -81,6 +83,7 @@ export default function Inventory() {
         stock: Number(form.stock), minStock: Number(form.minStock),
         price: Number(form.price), cost: Number(form.cost),
         location: form.location, unit: form.unit, description: form.description,
+        batch: form.batch, expiry_date: form.expiry_date,
       }, userId)
     }
     setModalOpen(false)
@@ -192,6 +195,8 @@ export default function Inventory() {
                     <span>Precio: <strong style={{ color: 'var(--text-primary)' }}>${Number(item.price).toLocaleString('es-DO')}</strong></span>
                     <span>Costo: <strong style={{ color: 'var(--text-primary)' }}>${Number(item.cost).toLocaleString('es-DO')}</strong></span>
                     {item.location && <span>Ubicación: {item.location}</span>}
+                    {item.batch && <span>Lote: {item.batch}</span>}
+                    {item.expiry_date && <span>Vence: {item.expiry_date}</span>}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -299,6 +304,14 @@ export default function Inventory() {
                 <div><label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Ubicación</label>
                   <input name="location" value={form.location} onChange={handleFormChange} placeholder="Ej: Almacén A, Estante 3"
                     style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} /></div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div><label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Lote / Batch</label>
+                    <input name="batch" value={form.batch} onChange={handleFormChange} placeholder="Ej: LOTE-2026-01"
+                      style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} /></div>
+                  <div><label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Fecha vencimiento</label>
+                    <input name="expiry_date" type="date" value={form.expiry_date} onChange={handleFormChange}
+                      style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} /></div>
+                </div>
                 <div><label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 4 }}>Descripción</label>
                   <textarea name="description" value={form.description} onChange={handleFormChange} placeholder="Descripción del producto" rows={2}
                     style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} /></div>

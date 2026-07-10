@@ -1,11 +1,6 @@
 node_modules/
 dist/
-backend/email_log.txt
-backend/__pycache__/
-backend/app/__pycache__/
-backend/app/models/__pycache__/
-backend/app/routes/__pycache__/
-backend/app/schemas/__pycache__/
-backend/app/services/__pycache__/
+**/__pycache__/
 *.pyc
 .env
+backend/email_log.txt

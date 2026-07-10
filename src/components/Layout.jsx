@@ -7,25 +7,52 @@ import {
   FiCalendar, FiVideo, FiTrendingUp, FiCheckSquare, FiShield,
   FiLogOut, FiMenu, FiChevronLeft, FiBell, FiSearch,
   FiSun, FiMoon, FiUser, FiMessageCircle, FiBarChart2,
-  FiDollarSign, FiBook, FiPackage
+  FiDollarSign, FiBook, FiPackage, FiZap, FiCopy
 } from 'react-icons/fi'
 
-const LINKS = [
-  { to: '/', label: 'Dashboard', icon: FiGrid },
-  { to: '/invoicing', label: 'Facturación', icon: FiFileText },
-  { to: '/cash-register', label: 'Caja', icon: FiDollarSign },
-  { to: '/crm', label: 'CRM', icon: FiUsers },
-  { to: '/hr', label: 'RRHH', icon: FiUserCheck },
-  { to: '/inventory', label: 'Inventario', icon: FiPackage },
-  { to: '/purchases', label: 'Compras', icon: FiShoppingCart },
-  { to: '/scheduling', label: 'Agenda', icon: FiCalendar },
-  { to: '/meetings', label: 'Reuniones', icon: FiVideo },
-  { to: '/sales', label: 'Ventas Online', icon: FiTrendingUp },
-  { to: '/tasks', label: 'Tareas', icon: FiCheckSquare },
-  { to: '/accounting', label: 'Contabilidad', icon: FiBook },
-  { to: '/reports', label: 'Informes', icon: FiBarChart2 },
-  { to: '/security', label: 'Seguridad', icon: FiShield },
-  { to: '/chat', label: 'Chat', icon: FiMessageCircle },
+const SECTIONS = [
+  {
+    label: 'General',
+    items: [
+      { to: '/', label: 'Dashboard', icon: FiGrid },
+    ],
+  },
+  {
+    label: 'Gestión',
+    items: [
+      { to: '/invoicing', label: 'Facturación', icon: FiFileText },
+      { to: '/cash-register', label: 'Caja', icon: FiDollarSign },
+      { to: '/crm', label: 'CRM', icon: FiUsers },
+      { to: '/hr', label: 'RRHH', icon: FiUserCheck },
+      { to: '/inventory', label: 'Inventario', icon: FiPackage },
+      { to: '/purchases', label: 'Compras', icon: FiShoppingCart },
+      { to: '/sales', label: 'Ventas', icon: FiTrendingUp },
+    ],
+  },
+  {
+    label: 'Proyectos',
+    items: [
+      { to: '/scheduling', label: 'Agenda', icon: FiCalendar },
+      { to: '/meetings', label: 'Reuniones', icon: FiVideo },
+      { to: '/tasks', label: 'Tareas', icon: FiCheckSquare },
+      { to: '/chat', label: 'Chat', icon: FiMessageCircle },
+    ],
+  },
+  {
+    label: 'Inteligencia',
+    items: [
+      { to: '/ai-assistant', label: 'IA Javaline', icon: FiZap },
+      { to: '/ai-context', label: 'Contexto IA', icon: FiBook },
+    ],
+  },
+  {
+    label: 'Administración',
+    items: [
+      { to: '/accounting', label: 'Contabilidad', icon: FiBook },
+      { to: '/reports', label: 'Informes', icon: FiBarChart2 },
+      { to: '/security', label: 'Seguridad', icon: FiShield },
+    ],
+  },
 ]
 
 export default function Layout({ children }) {
@@ -59,26 +86,32 @@ export default function Layout({ children }) {
               style={{color: 'var(--text-primary)'}}>Javaline</span>
           </div>
           <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-            {LINKS.map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all ${
-                    isActive
-                      ? 'border'
-                      : 'border border-transparent hover:bg-white/[0.03]'
-                  }`
-                }
-                style={({ isActive }) => ({
-                  background: isActive ? 'var(--accent-subtle)' : 'transparent',
-                  color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
-                  borderColor: isActive ? 'var(--accent-border)' : 'transparent',
-                })}
-              >
-                <Icon size={16} className="flex-shrink-0" />
-                <span className={!sidebarOpen ? 'md:hidden' : ''}>{label}</span>
-              </NavLink>
+            {SECTIONS.map((section) => (
+              <div key={section.label} style={{marginBottom: 8}}>
+                <p className={`text-[10px] font-semibold uppercase tracking-wider px-3 py-1 ${!sidebarOpen ? 'md:hidden' : ''}`}
+                  style={{color: 'var(--text-muted)', opacity: 0.5}}>{section.label}</p>
+                {section.items.map(({ to, label, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all ${
+                        isActive
+                          ? 'border'
+                          : 'border border-transparent hover:bg-white/[0.03]'
+                      }`
+                    }
+                    style={({ isActive }) => ({
+                      background: isActive ? 'var(--accent-subtle)' : 'transparent',
+                      color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                      borderColor: isActive ? 'var(--accent-border)' : 'transparent',
+                    })}
+                  >
+                    <Icon size={16} className="flex-shrink-0" />
+                    <span className={!sidebarOpen ? 'md:hidden' : ''}>{label}</span>
+                  </NavLink>
+                ))}
+              </div>
             ))}
           </nav>
           <div className="p-2" style={{borderTop: '1px solid var(--border)'}}>
