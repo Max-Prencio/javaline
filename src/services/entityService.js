@@ -110,9 +110,8 @@ export const invoiceBusinessLogic = {
   },
 
   async markAsPaid(id, userId) {
-    const inv = await invoiceService.update(id, { status: 'pagada', paidAt: new Date().toISOString() }, userId)
-    db.addAudit({ action: 'mark_paid', store: 'invoices', detail: `Factura marcada como pagada: ${id}`, userId })
-    return inv
+    // Single audit via invoiceService.update — no extra addAudit needed
+    return invoiceService.update(id, { status: 'pagada', paidAt: new Date().toISOString() }, userId)
   },
 
   async markAsOverdue(id, userId) {
@@ -121,9 +120,9 @@ export const invoiceBusinessLogic = {
 
   async generateReport(filters = {}) {
     const invoices = await invoiceService.list(filters)
-    const totalAmount = invoices.reduce((s, i) => s + i.amount, 0)
+    const totalAmount = invoices.reduce((s, i) => s + (i.total || i.amount || 0), 0)
     const byStatus = {}
-    invoices.forEach(i => { byStatus[i.status] = (byStatus[i.status] || 0) + i.amount })
+    invoices.forEach(i => { byStatus[i.status] = (byStatus[i.status] || 0) + (i.total || i.amount || 0) })
     return { invoices, totalAmount, byStatus, count: invoices.length }
   },
 }
@@ -131,7 +130,9 @@ export const invoiceBusinessLogic = {
 export const contactService = createEntityService('contacts', 'Contacto')
 export const employeeService = createEntityService('employees', 'Empleado')
 export const purchaseService = createEntityService('purchases', 'Compra')
-export const productService = createEntityService('products', 'Producto')
+
+// productService now reads from 'inventory' — single source of truth for stock
+export const productService = createEntityService('inventory', 'Producto')
 export const taskService = createEntityService('tasks', 'Tarea')
 export const meetingService = createEntityService('meetings', 'Reunión')
 export const roleService = createEntityService('roles', 'Rol')
@@ -167,10 +168,14 @@ export const productBusinessLogic = {
   async recordSale(id, qty, userId) {
     const product = await productService.getById(id)
     if (!product) throw new Error('Producto no encontrado')
-    return productService.update(id, {
-      stock: Math.max(0, (product.stock || 0) - qty),
-      sales: (product.sales || 0) + qty,
-    }, userId)
+    const newStock = Math.max(0, (product.stock || 0) - qty)
+    const newSales = (product.sales || 0) + qty
+    // Update unified inventory store
+    db.update('inventory', id, { stock: newStock, sales: newSales })
+    // Keep legacy products store in sync (used by reports/dashboard)
+    const legacy = db.getById('products', id)
+    if (legacy) db.update('products', id, { stock: newStock, sales: newSales })
+    return db.getById('inventory', id)
   },
   async getLowStock(threshold = 5) {
     const products = await productService.list()

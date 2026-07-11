@@ -56,13 +56,23 @@ export function AuthProvider({ children }) {
     }
   }, [user])
 
+  // Normalize user object so both user.id and user.userId are always set
+  function normalizeUser(raw) {
+    if (!raw) return raw
+    const id = raw.id || raw.userId
+    return { ...raw, id, userId: id }
+  }
+
   const login = useCallback(async (email, password) => {
     try {
       const result = await authService.login(email, password)
+      // 2FA required — don't set user yet
+      if (result?.twoFactorRequired) return result
       setError('')
-      setUser(result)
+      const u = normalizeUser(result)
+      setUser(u)
       setSessionExpiresAt(Date.now() + 30 * 60 * 1000)
-      if (result.id) notificationService.getUnreadCount(result.id).then(setUnreadNotifs).catch(() => {})
+      if (u.id) notificationService.getUnreadCount(u.id).then(setUnreadNotifs).catch(() => {})
       return true
     } catch (e) {
       setError(e.message || 'Error al iniciar sesión')
@@ -73,7 +83,8 @@ export function AuthProvider({ children }) {
   const verifyTwoFactor = useCallback(async (email, code) => {
     try {
       const result = await authService.verifyTwoFactor(email, code)
-      setUser(result)
+      const u = normalizeUser(result)
+      setUser(u)
       setSessionExpiresAt(Date.now() + 30 * 60 * 1000)
       setError('')
       return true
@@ -85,7 +96,8 @@ export function AuthProvider({ children }) {
 
   const register = useCallback(async (data) => {
     try {
-      const u = await authService.register(data)
+      const result = await authService.register(data)
+      const u = normalizeUser(result)
       setUser(u)
       setError('')
       setSessionExpiresAt(Date.now() + 30 * 60 * 1000)
@@ -98,7 +110,8 @@ export function AuthProvider({ children }) {
 
   const acceptInvitation = useCallback(async (code, name, password) => {
     try {
-      const u = await authService.acceptInvitation(code, name, password)
+      const result = await authService.acceptInvitation(code, name, password)
+      const u = normalizeUser(result)
       setUser(u)
       setError('')
       securityService.createSession(u)

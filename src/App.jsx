@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import Layout from './components/Layout'
@@ -36,10 +36,32 @@ function PrivateRoute({ children }) {
 
 export default function App() {
   const { user } = useAuth()
+  const [storageFull, setStorageFull] = useState(false)
 
   useEffect(() => { preloadLogo() }, [])
 
+  useEffect(() => {
+    const handler = () => setStorageFull(true)
+    window.addEventListener('javaline:storage-full', handler)
+    return () => window.removeEventListener('javaline:storage-full', handler)
+  }, [])
+
   return (
+    <>
+    {storageFull && (
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+        background: '#dc2626', color: '#fff', textAlign: 'center',
+        padding: '10px 16px', fontSize: 13, fontWeight: 600,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+      }}>
+        ⚠️ Almacenamiento local lleno. Algunos cambios no se guardarán. Elimina fotos de perfil o exporta y limpia datos.
+        <button onClick={() => setStorageFull(false)}
+          style={{ background: 'none', border: '1px solid rgba(255,255,255,0.5)', color: '#fff', borderRadius: 6, padding: '2px 10px', cursor: 'pointer', fontSize: 12 }}>
+          Cerrar
+        </button>
+      </div>
+    )}
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
@@ -75,5 +97,6 @@ export default function App() {
         </PrivateRoute>
       } />
     </Routes>
+    </>
   )
 }

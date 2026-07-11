@@ -64,12 +64,12 @@ export default function Accounting() {
 function AccountsTab({ accounts, load }) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ code: '', name: '', type: 'activo', nature: 'deudora', level: 3 })
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
 
   const handleCreate = async () => {
     if (!form.code || !form.name) return
     await accountingService.createAccount(form, userId)
-    db.addAudit({action:'create_account',store:'accounts',detail:`Cuenta creada: ${form.code}`,userId})
+    // Audit ya registrado dentro de accountingService.createAccount
     setForm({code:'',name:'',type:'activo',nature:'deudora',level:3})
     setShowForm(false); load()
   }
@@ -151,7 +151,7 @@ function AccountsTab({ accounts, load }) {
 function JournalTab({ entries, load, accounts }) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0,10), concept: '', lines: [{accountId:'',debit:'',credit:''}] })
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
 
   const addLine = () => setForm({...form, lines: [...form.lines, {accountId:'',debit:'',credit:''}] })
   const updateLine = (i, field, val) => {
@@ -164,7 +164,7 @@ function JournalTab({ entries, load, accounts }) {
     const lines = form.lines.map(l => ({accountId: l.accountId, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0}))
     if (lines.length === 0 || lines.every(l => !l.debit && !l.credit)) return
     await accountingService.createJournalEntry({date: form.date, concept: form.concept, lines}, userId)
-    db.addAudit({action:'create_journal',store:'journalEntries',detail:`Asiento: ${form.concept}`,userId})
+    // Audit ya registrado dentro de accountingService.createJournalEntry
     setForm({date: new Date().toISOString().slice(0,10), concept: '', lines: [{accountId:'',debit:'',credit:''}]})
     setShowForm(false); load()
   }

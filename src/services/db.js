@@ -27,7 +27,17 @@ function getStore(store) {
 }
 
 function setStore(store, data) {
-  localStorage.setItem(`${DB_PREFIX}${store}`, JSON.stringify(data))
+  try {
+    localStorage.setItem(`${DB_PREFIX}${store}`, JSON.stringify(data))
+  } catch (e) {
+    if (e.name === 'QuotaExceededError' || e.code === 22) {
+      console.error(`[db] localStorage lleno al guardar "${store}". Considera limpiar datos o fotos.`)
+      // Dispatch event so UI can warn the user
+      window.dispatchEvent(new CustomEvent('javaline:storage-full', { detail: { store } }))
+    } else {
+      throw e
+    }
+  }
 }
 
 function getAll(store) {
@@ -170,13 +180,13 @@ const SEED_DATA = {
     { id: 'TAX-003', name: 'Exento', rate: 0, type: 'vat', active: true, createdAt: '2026-01-01T00:00:00Z' },
   ],
   contacts: [
-    { name: 'Carlos Méndez', company: 'Tech Solutions', email: 'carlos@techsol.com', phone: '809-555-0101', stage: 'cliente', type: 'company', rnc: '101-23456-7', notes: '' },
-    { name: 'Ana Rosario', company: 'Distribuidora Ortiz', email: 'ana@ortiz.com', phone: '809-555-0102', stage: 'negociación', type: 'company', rnc: '102-34567-8', notes: '' },
-    { name: 'Luis Peña', company: 'Clínica Central', email: 'luis@clincentral.com', phone: '809-555-0103', stage: 'lead', type: 'company', rnc: '103-45678-9', notes: '' },
-    { name: 'Sofía Reyes', company: 'Grupo Moya', email: 'sofia@grupomoya.com', phone: '809-555-0104', stage: 'cliente', type: 'company', rnc: '104-56789-0', notes: '' },
-    { name: 'Pedro Jiménez', company: 'Agencia Nova', email: 'pedro@novard.com', phone: '809-555-0105', stage: 'lead', type: 'company', rnc: '105-67890-1', notes: '' },
-    { name: 'Laura Castillo', company: 'Distribuidora Ortiz', email: 'laura@ortiz.com', phone: '809-555-0106', stage: 'negociación', type: 'individual', notes: '' },
-    { name: 'Roberto Santos', company: 'Tech Solutions', email: 'roberto@techsol.com', phone: '809-555-0107', stage: 'cliente', type: 'individual', notes: '' },
+    { id: 'CLI-001', name: 'Carlos Méndez', company: 'Tech Solutions', email: 'carlos@techsol.com', phone: '809-555-0101', stage: 'cliente', type: 'company', rnc: '101-23456-7', notes: '', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+    { id: 'CLI-002', name: 'Ana Rosario', company: 'Distribuidora Ortiz', email: 'ana@ortiz.com', phone: '809-555-0102', stage: 'negociación', type: 'company', rnc: '102-34567-8', notes: '', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+    { id: 'CLI-003', name: 'Luis Peña', company: 'Clínica Central', email: 'luis@clincentral.com', phone: '809-555-0103', stage: 'lead', type: 'company', rnc: '103-45678-9', notes: '', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+    { id: 'CLI-004', name: 'Sofía Reyes', company: 'Grupo Moya', email: 'sofia@grupomoya.com', phone: '809-555-0104', stage: 'cliente', type: 'company', rnc: '104-56789-0', notes: '', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+    { id: 'CLI-005', name: 'Pedro Jiménez', company: 'Agencia Nova', email: 'pedro@novard.com', phone: '809-555-0105', stage: 'lead', type: 'company', rnc: '105-67890-1', notes: '', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+    { id: 'CLI-006', name: 'Laura Castillo', company: 'Distribuidora Ortiz', email: 'laura@ortiz.com', phone: '809-555-0106', stage: 'negociación', type: 'individual', notes: '', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+    { id: 'CLI-007', name: 'Roberto Santos', company: 'Tech Solutions', email: 'roberto@techsol.com', phone: '809-555-0107', stage: 'cliente', type: 'individual', notes: '', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
   ],
   employees: [
     { name: 'María García', department: 'Ventas', position: 'Ejecutiva de Ventas', salary: 45000, hireDate: '2024-03-01', status: 'activo' },
@@ -260,52 +270,96 @@ const SEED_DATA = {
   ],
 }
 
+// --- VERSIONED MIGRATIONS ---
+// Increase DB_VERSION when a migration needs to run on existing installs
+const DB_VERSION = 3
+const DB_VERSION_KEY = `${DB_PREFIX}db_version`
+
+const MIGRATIONS = {
+  1: () => {
+    // v1 → v2: Add IDs to contacts that were seeded without them
+    const contacts = getStore('contacts')
+    if (contacts.length > 0 && !contacts[0].id) {
+      contacts.forEach((c, i) => {
+        c.id = `CLI-${String(i + 1).padStart(3, '0')}`
+        c.createdAt = c.createdAt || new Date().toISOString()
+        c.updatedAt = new Date().toISOString()
+      })
+      setStore('contacts', contacts)
+    }
+  },
+  2: () => {
+    // v2 → v3: Add permissions to users that don't have them
+    const users = getStore('users')
+    const changed = users.map(u => {
+      if (!u.permissions) {
+        return {
+          ...u,
+          permissions: u.role === 'admin'
+            ? ['factura_cliente', 'factura_proveedor', 'caja', 'contabilidad', 'todos']
+            : ['factura_cliente'],
+          updatedAt: new Date().toISOString(),
+        }
+      }
+      return u
+    })
+    if (JSON.stringify(changed) !== JSON.stringify(users)) setStore('users', changed)
+  },
+}
+
+function runMigrations() {
+  const current = parseInt(localStorage.getItem(DB_VERSION_KEY) || '0', 10)
+  if (current >= DB_VERSION) return
+  for (let v = current + 1; v <= DB_VERSION; v++) {
+    if (MIGRATIONS[v - 1]) {
+      try {
+        MIGRATIONS[v - 1]()
+      } catch (e) {
+        console.error(`[db] Migration v${v} failed:`, e)
+      }
+    }
+  }
+  localStorage.setItem(DB_VERSION_KEY, String(DB_VERSION))
+}
+
 function seedAll(force = false) {
-  // Hash seed passwords with bcrypt
+  // Hash seed passwords with bcrypt (only on first load)
   const seedCopy = JSON.parse(JSON.stringify(SEED_DATA))
   if (seedCopy.users) {
     seedCopy.users = seedCopy.users.map(u => ({
       ...u,
-      password: bcrypt.hashSync(u.password, 12),
+      // Default password 'admin123' — change immediately in production
+      password: bcrypt.hashSync(u.password, 10),
     }))
   }
+
+  if (force) {
+    // Hard reset: overwrite all stores
+    Object.entries(seedCopy).forEach(([store, data]) => {
+      setStore(store, data)
+    })
+    localStorage.setItem(DB_VERSION_KEY, String(DB_VERSION))
+    addAudit({ action: 'system_reset', store: 'system', detail: 'Base de datos reiniciada', userId: 'system' })
+    return
+  }
+
+  // Soft seed: only fill stores that are empty
+  let seeded = false
   Object.entries(seedCopy).forEach(([store, data]) => {
-    const key = `${DB_PREFIX}${store}`
-    if (!localStorage.getItem(key) || JSON.parse(localStorage.getItem(key)).length === 0) {
-      localStorage.setItem(key, JSON.stringify(data))
+    const existing = getStore(store)
+    if (existing.length === 0) {
+      setStore(store, data)
+      seeded = true
     }
   })
-  const existingProducts = getStore('products')
-  if (existingProducts.length > 0 && !existingProducts[0].id) {
-    setStore('products', SEED_DATA.products)
+
+  if (seeded) {
+    localStorage.setItem(DB_VERSION_KEY, String(DB_VERSION))
+    addAudit({ action: 'system_seed', store: 'system', detail: 'Datos iniciales cargados', userId: 'system' })
   }
-  const existingContacts = getStore('contacts')
-  if (existingContacts.length > 0 && !existingContacts[0].id) {
-    existingContacts.forEach((c, i) => { c.id = `CLI-${String(i + 1).padStart(3, '0')}`; c.createdAt = new Date().toISOString(); c.updatedAt = new Date().toISOString() })
-    setStore('contacts', existingContacts)
-  }
-  const existingUsers = getStore('users')
-  if (existingUsers.length > 0 && !existingUsers[0].permissions) {
-    existingUsers.forEach(u => {
-      u.permissions = u.role === 'admin' ? ['factura_cliente', 'factura_proveedor', 'caja', 'contabilidad', 'todos'] : ['factura_cliente']
-      u.updatedAt = new Date().toISOString()
-    })
-    setStore('users', existingUsers)
-  }
-  if (force) {
-    const forceCopy = JSON.parse(JSON.stringify(SEED_DATA))
-    if (forceCopy.users) {
-      forceCopy.users = forceCopy.users.map(u => ({
-        ...u,
-        password: bcrypt.hashSync(u.password, 12),
-      }))
-    }
-    Object.entries(forceCopy).forEach(([store, data]) => {
-      const key = `${DB_PREFIX}${store}`
-      localStorage.setItem(key, JSON.stringify(data))
-    })
-  }
-  addAudit({ action: 'system_seed', store: 'system', detail: 'Datos iniciales cargados', userId: 'system' })
+
+  // Run versioned migrations for existing installs
+  runMigrations()
 }
 
 init()
