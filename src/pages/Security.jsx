@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { FiShield, FiUsers, FiCheck, FiMinus, FiSearch, FiClock, FiKey, FiSmartphone, FiLock, FiAlertTriangle, FiCheckCircle, FiCopy, FiRefreshCw } from 'react-icons/fi'
+import { FiShield, FiUsers, FiCheck, FiMinus, FiSearch, FiClock, FiKey, FiSmartphone, FiLock, FiAlertTriangle, FiCheckCircle, FiCopy, FiRefreshCw, FiDownload, FiTrash2 } from 'react-icons/fi'
 import { useAuth } from '../contexts/AuthContext'
 import securityService from '../services/securityService'
 import authService from '../services/authService'
 import { roleService } from '../services/entityService'
+import db from '../services/db'
 
 const MODULES = ['Dashboard', 'Facturación', 'CRM', 'RRHH', 'Compras', 'Agenda', 'Reuniones', 'Ventas', 'Tareas']
 
@@ -35,11 +36,16 @@ export default function Security() {
   const [roles, setRoles] = useState([])
   const [show2FASetup, setShow2FASetup] = useState(false)
   const [twoFactorSecret, setTwoFactorSecret] = useState('')
+  const [twoFactorFormatted, setTwoFactorFormatted] = useState('')
+  const [twoFactorQR, setTwoFactorQR] = useState(null)
   const [twoFactorCode, setTwoFactorCode] = useState('')
   const [twoFactorError, setTwoFactorError] = useState('')
   const [twoFactorSuccess, setTwoFactorSuccess] = useState(false)
   const [sessionInfo, setSessionInfo] = useState(null)
   const [copied, setCopied] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [deleteText, setDeleteText] = useState('')
+  const [exportLoading, setExportLoading] = useState(false)
 
   useEffect(() => {
     securityService.getSecurityAudit(null, 50).then(setAuditLog)
@@ -51,9 +57,13 @@ export default function Security() {
 
   const filteredRoles = roles.filter((r) => (r.name || '').toLowerCase().includes(search.toLowerCase()))
 
-  const handleEnable2FA = () => {
-    const { formatted } = securityService.generateTwoFactorSecret()
-    setTwoFactorSecret(formatted)
+  const handleEnable2FA = async () => {
+    const email = user?.email || 'user'
+    const { secret, formatted, uri } = securityService.generateTwoFactorSecret(email)
+    setTwoFactorSecret(secret)
+    setTwoFactorFormatted(formatted)
+    const qr = await securityService.generateTwoFactorQR(uri)
+    setTwoFactorQR(qr)
     setShow2FASetup(true)
     setTwoFactorSuccess(false)
     setTwoFactorCode('')
@@ -62,14 +72,50 @@ export default function Security() {
 
   const handleVerify2FA = async () => {
     setTwoFactorError('')
-    const clean = twoFactorSecret.replace(/\s/g, '')
-    if (securityService.verifyTwoFactorCode(clean, twoFactorCode)) {
-      await authService.updateUser(user?.userId || user?.id, { twoFactorEnabled: true, twoFactorSecret: clean })
+    if (securityService.verifyTwoFactorCode(twoFactorSecret, twoFactorCode)) {
+      await authService.updateUser(user?.userId || user?.id, { twoFactorEnabled: true, twoFactorSecret })
       setTwoFactorSuccess(true)
       setSecurityScore(securityService.getSecurityScore())
     } else {
-      setTwoFactorError('Código inválido. Intenta de nuevo.')
+      setTwoFactorError('Código inválido. Asegúrate de que tu app esté sincronizada.')
     }
+  }
+
+  const handleExportData = async () => {
+    setExportLoading(true)
+    try {
+      const userId = user?.id || user?.userId
+      const data = {}
+      db.STORES.forEach(store => { data[store] = db.getAll(store) })
+      // Remove passwords from export
+      if (data.users) data.users = data.users.map(({ password: _pw, ...u }) => u)
+      const json = JSON.stringify({ exportedAt: new Date().toISOString(), version: 1, data }, null, 2)
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `javaline-backup-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      db.addAudit({ action: 'data_export', store: 'system', detail: 'Exportación de datos realizada', userId })
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const handleDeleteAccount = () => {
+    if (deleteText !== 'ELIMINAR') return
+    const userId = user?.id || user?.userId
+    db.addAudit({ action: 'account_deleted', store: 'system', detail: `Cuenta eliminada: ${user?.email}`, userId })
+    // Remove user-specific data
+    db.STORES.forEach(store => {
+      if (store === 'users') {
+        const users = db.getAll('users').filter(u => u.id !== userId)
+        localStorage.setItem('javaline_users', JSON.stringify(users))
+      }
+    })
+    securityService.destroySession()
+    window.location.href = '/login'
   }
 
   const handleRefreshScore = () => setSecurityScore(securityService.getSecurityScore())
@@ -86,6 +132,7 @@ export default function Security() {
     { id: '2fa', label: '2FA', icon: FiSmartphone },
     { id: 'session', label: 'Sesión', icon: FiKey },
     { id: 'score', label: 'Score de Seguridad', icon: FiShield },
+    { id: 'privacy', label: 'Privacidad', icon: FiShield },
   ]
 
   const renderScore = () => {
@@ -224,15 +271,26 @@ export default function Security() {
                 Escanea este código con tu app de autenticación (Google Authenticator, Authy, etc.)
                 o ingresa manualmente la clave secreta.
               </p>
+              {/* QR Code */}
+              {twoFactorQR && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 20 }}>
+                  <div style={{ padding: 12, background: '#fff', borderRadius: 12, border: '1px solid var(--border)', display: 'inline-block' }}>
+                    <img src={twoFactorQR} alt="QR 2FA" width={180} height={180} />
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8, textAlign: 'center' }}>
+                    Escanea con Google Authenticator, Authy o cualquier app TOTP
+                  </p>
+                </div>
+              )}
               <div style={{ padding: 16, borderRadius: 12, background: 'var(--bg-elevated)', border: '1px solid var(--border)', marginBottom: 20 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Clave secreta</span>
-                  <motion.button whileTap={{ scale: 0.9 }} onClick={() => copyToClipboard(twoFactorSecret)}
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Clave secreta (manual)</span>
+                  <motion.button whileTap={{ scale: 0.9 }} onClick={() => copyToClipboard(twoFactorFormatted)}
                     style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
                     {copied ? <FiCheck size={14} /> : <FiCopy size={14} />} {copied ? 'Copiado' : 'Copiar'}
                   </motion.button>
                 </div>
-                <code style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: 3, fontFamily: "'JetBrains Mono', monospace" }}>{twoFactorSecret}</code>
+                <code style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: 3, fontFamily: "'JetBrains Mono', monospace", wordBreak: 'break-all' }}>{twoFactorFormatted}</code>
               </div>
               <div style={styles.inputGroup}>
                 <label style={styles.label}>Verifica el código</label>
@@ -438,6 +496,60 @@ export default function Security() {
       {tab === '2fa' && render2FA()}
       {tab === 'session' && renderSession()}
       {tab === 'score' && renderScore()}
+      {tab === 'privacy' && (
+        <motion.div {...fadeUp} transition={{ duration: 0.4, delay: 0.1 }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Export */}
+          <div style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <FiDownload size={18} color="var(--accent)" />
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>Exportar mis datos</h3>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
+              Descarga una copia completa de todos tus datos en formato JSON. Incluye facturas, contactos, inventario, tareas y configuraciones. Las contraseñas no se incluyen.
+            </p>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleExportData} disabled={exportLoading}
+              style={{ background: 'var(--accent)', border: 'none', borderRadius: 10, padding: '10px 22px', color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, opacity: exportLoading ? 0.7 : 1 }}>
+              <FiDownload size={15} /> {exportLoading ? 'Generando...' : 'Descargar backup JSON'}
+            </motion.button>
+          </div>
+
+          {/* Delete account */}
+          <div style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid rgba(239,68,68,0.3)', padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <FiTrash2 size={18} color="#ef4444" />
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#ef4444' }}>Eliminar mi cuenta</h3>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
+              Esta acción es irreversible. Se eliminarán tus datos de usuario de esta sesión. Exporta tus datos antes de proceder.
+            </p>
+            {!deleteConfirm ? (
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setDeleteConfirm(true)}
+                style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '10px 22px', color: '#ef4444', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <FiTrash2 size={15} /> Eliminar mi cuenta
+              </motion.button>
+            ) : (
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#ef4444', marginBottom: 10 }}>
+                  Escribe <strong>ELIMINAR</strong> para confirmar:
+                </p>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input value={deleteText} onChange={e => setDeleteText(e.target.value)} placeholder="ELIMINAR"
+                    style={{ padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, outline: 'none', width: 160 }} />
+                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                    onClick={handleDeleteAccount} disabled={deleteText !== 'ELIMINAR'}
+                    style={{ background: deleteText === 'ELIMINAR' ? '#ef4444' : 'rgba(239,68,68,0.2)', border: 'none', borderRadius: 8, padding: '10px 18px', color: 'white', fontSize: 13, fontWeight: 600, cursor: deleteText === 'ELIMINAR' ? 'pointer' : 'not-allowed' }}>
+                    Confirmar
+                  </motion.button>
+                  <button onClick={() => { setDeleteConfirm(false); setDeleteText('') }}
+                    style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer' }}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
     </div>
   )
 }

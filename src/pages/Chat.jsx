@@ -9,7 +9,7 @@ export default function Chat() {
   const [message, setMessage] = useState('')
   const [search, setSearch] = useState('')
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
 
   const load = useCallback(async () => {
     const data = await chatService.getConversations()

@@ -20,7 +20,7 @@ export default function Meetings() {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ title: '', date: '', time: '', attendees: '', room: '' })
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
 
   const load = useCallback(async () => {
     const data = await meetingService.list()

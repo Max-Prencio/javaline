@@ -29,7 +29,7 @@ export default function Inventory() {
   const [moveForm, setMoveForm] = useState({ quantity: '', reason: '', type: 'in' })
   const [editId, setEditId] = useState(null)
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId || JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
 
   const load = async () => {
     const filters = {}

@@ -25,6 +25,8 @@ class InvoiceCreate(BaseModel):
     notes: str = ""
     installment_plan: Optional[Any] = None
     cash_register_id: Optional[str] = None
+    amount_received: float = 0
+    change_returned: float = 0
     status: str = "pending"
 
 
@@ -34,6 +36,8 @@ class InvoiceUpdate(BaseModel):
     payment_method: Optional[str] = None
     paid_at: Optional[str] = None
     notes: Optional[str] = None
+    amount_received: Optional[float] = None
+    change_returned: Optional[float] = None
 
 
 class InvoiceResponse(BaseModel):
@@ -60,6 +64,8 @@ class InvoiceResponse(BaseModel):
     notes: str
     installment_plan: Optional[Any]
     cash_register_id: Optional[str]
+    amount_received: float
+    change_returned: float
     rectifies_id: Optional[str]
     created_by: Optional[str]
     paid_at: Optional[datetime]

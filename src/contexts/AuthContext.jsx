@@ -12,12 +12,18 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState('')
   const [unreadNotifs, setUnreadNotifs] = useState(0)
   const [sessionExpiresAt, setSessionExpiresAt] = useState(null)
+  const [deviceWarning, setDeviceWarning] = useState(false)
   const sessionCheckRef = useRef(null)
 
   // Restore session on mount
   useEffect(() => {
     const session = securityService.getSession()
     if (session) {
+      // Device fingerprint check — warn if login came from a different device
+      const currentFingerprint = securityService.getFingerprint()
+      if (session.fingerprint && session.fingerprint !== currentFingerprint) {
+        setDeviceWarning(true)
+      }
       setUser(session)
       setSessionExpiresAt(new Date(session.expiresAt).getTime())
       notificationService.getUnreadCount(session.userId).then(setUnreadNotifs).catch(() => {})
@@ -169,7 +175,7 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       user, login, register, logout, updateProfile, updatePhoto,
       acceptInvitation, error, setError, loading, unreadNotifs, refreshNotifs,
-      verifyTwoFactor, sessionExpiresAt,
+      verifyTwoFactor, sessionExpiresAt, deviceWarning, dismissDeviceWarning: () => setDeviceWarning(false),
     }}>
       {children}
     </AuthContext.Provider>

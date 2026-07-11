@@ -69,6 +69,8 @@ def create_invoice(
         notes=data.notes,
         installment_plan=data.installment_plan,
         cash_register_id=data.cash_register_id,
+        amount_received=data.amount_received,
+        change_returned=data.change_returned,
         status=data.status,
         created_by=current_user.id,
     )

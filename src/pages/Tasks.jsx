@@ -100,7 +100,7 @@ export default function Tasks() {
   const [form, setForm] = useState(defaultForm)
   const [search, setSearch] = useState('')
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
 
   const load = useCallback(async () => {
     const data = await taskService.list()

@@ -35,7 +35,7 @@ function PrivateRoute({ children }) {
 }
 
 export default function App() {
-  const { user } = useAuth()
+  const { user, deviceWarning, dismissDeviceWarning } = useAuth()
   const [storageFull, setStorageFull] = useState(false)
 
   useEffect(() => { preloadLogo() }, [])
@@ -48,6 +48,20 @@ export default function App() {
 
   return (
     <>
+    {deviceWarning && (
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+        background: '#d97706', color: '#fff', textAlign: 'center',
+        padding: '10px 16px', fontSize: 13, fontWeight: 600,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+      }}>
+        🔔 Sesión activa desde un dispositivo diferente al registrado. Si no fuiste tú, cambia tu contraseña.
+        <button onClick={dismissDeviceWarning}
+          style={{ background: 'none', border: '1px solid rgba(255,255,255,0.5)', color: '#fff', borderRadius: 6, padding: '2px 10px', cursor: 'pointer', fontSize: 12 }}>
+          Entendido
+        </button>
+      </div>
+    )}
     {storageFull && (
       <div style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,

@@ -14,6 +14,7 @@ import {
 } from 'react-icons/fi'
 import api from '../services/apiClient'
 import DatePicker from '../components/DatePicker'
+import { maskSalary } from '../utils/mask'
 
 const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.04 } } }
 const item = { hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0, transition: { duration: 0.3 } } }
@@ -49,6 +50,25 @@ const LABELS = {
 }
 
 const DEDUCTION_TYPES = ['ISR', 'AFP', 'ARS', 'Cooperativa', 'Préstamo', 'Otro']
+
+// Masked salary field with reveal toggle
+function SalaryField({ salary, salaryType }) {
+  const [revealed, setRevealed] = useState(false)
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <FiDollarSign size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+      <span style={{ fontFamily: revealed ? 'inherit' : 'monospace', letterSpacing: revealed ? 'normal' : 1 }}>
+        {revealed ? `$${formatMoney(salary)}` : maskSalary(salary)}
+      </span>
+      <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>/ {salaryType || 'mensual'}</span>
+      <button onClick={() => setRevealed(r => !r)}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--accent)', fontSize: 11, opacity: 0.7 }}
+        title={revealed ? 'Ocultar' : 'Revelar salario'}>
+        {revealed ? '🙈' : '👁️'}
+      </button>
+    </div>
+  )
+}
 
 function calcISR(salary) {
   if (!salary || salary <= 0) return 0
@@ -444,10 +464,7 @@ function EmpleadosTab({ employees, departments, reload }) {
                 <FiFileText size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                 <span style={{ textTransform: 'capitalize' }}>{emp.contract_type}</span>
               </div>}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <FiDollarSign size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                <span>${formatMoney(emp.salary)} / {emp.salary_type || 'mensual'}</span>
-              </div>
+              <SalaryField salary={emp.salary} salaryType={emp.salary_type} />
               {emp.hire_date && <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <FiCalendar size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                 <span>Ingreso: {fmtDate(emp.hire_date)}</span>

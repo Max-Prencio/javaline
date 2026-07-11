@@ -1,4 +1,6 @@
 import bcrypt from 'bcryptjs'
+import * as OTPAuth from 'otpauth'
+import QRCode from 'qrcode'
 import db from './db'
 
 const SALT_ROUNDS = 12
@@ -275,28 +277,61 @@ const securityService = {
     return { score, maxScore: 100, checks }
   },
 
-  // --- 2FA SIMULATION ---
-  generateTwoFactorSecret() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
-    let secret = ''
-    for (let i = 0; i < 16; i++) secret += chars.charAt(Math.floor(Math.random() * chars.length))
-    const formatted = secret.match(/.{1,4}/g).join(' ')
-    return { secret, formatted }
+  // --- 2FA TOTP (RFC 6238 — compatible con Google Authenticator, Authy, etc.) ---
+  generateTwoFactorSecret(email = 'user') {
+    const secret = new OTPAuth.Secret({ size: 20 })
+    const base32 = secret.base32
+    const formatted = base32.match(/.{1,4}/g).join(' ')
+    const totp = new OTPAuth.TOTP({
+      issuer: 'Javaline',
+      label: email,
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+      secret,
+    })
+    const uri = totp.toString()
+    return { secret: base32, formatted, uri }
   },
 
-  generateTwoFactorCode(secret) {
-    const time = Math.floor(Date.now() / 30000)
-    let hash = 0
-    const str = secret + time
-    for (let i = 0; i < str.length; i++) {
-      hash = ((hash << 5) - hash) + str.charCodeAt(i)
-      hash |= 0
+  async generateTwoFactorQR(uri) {
+    try {
+      return await QRCode.toDataURL(uri, { width: 200, margin: 2, color: { dark: '#000', light: '#fff' } })
+    } catch {
+      return null
     }
-    return String(Math.abs(hash) % 1000000).padStart(6, '0')
   },
 
-  verifyTwoFactorCode(secret, code) {
-    return this.generateTwoFactorCode(secret) === code
+  generateTwoFactorCode(secretBase32) {
+    try {
+      const totp = new OTPAuth.TOTP({
+        issuer: 'Javaline',
+        algorithm: 'SHA1',
+        digits: 6,
+        period: 30,
+        secret: OTPAuth.Secret.fromBase32(secretBase32.replace(/\s/g, '')),
+      })
+      return totp.generate()
+    } catch {
+      return null
+    }
+  },
+
+  verifyTwoFactorCode(secretBase32, code) {
+    try {
+      const totp = new OTPAuth.TOTP({
+        issuer: 'Javaline',
+        algorithm: 'SHA1',
+        digits: 6,
+        period: 30,
+        secret: OTPAuth.Secret.fromBase32(secretBase32.replace(/\s/g, '')),
+      })
+      // window: 1 allows ±30s clock drift
+      const delta = totp.validate({ token: String(code), window: 1 })
+      return delta !== null
+    } catch {
+      return false
+    }
   },
 }
 

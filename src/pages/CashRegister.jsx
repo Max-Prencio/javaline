@@ -14,7 +14,7 @@ export default function CashRegister() {
   const [loading, setLoading] = useState(false)
   const [reportModal, setReportModal] = useState(null)
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
 
   const load = useCallback(async () => {
     setRegister(await cashRegisterService.getOpen(userId))

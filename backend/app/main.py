@@ -16,7 +16,21 @@ try:
         conn.execute(sa_text("ALTER TABLE ats_candidates ADD COLUMN position_descr_file VARCHAR DEFAULT ''"))
         conn.commit()
 except Exception:
-    pass  # column already exists
+    pass
+try:
+    from sqlalchemy import text as sa_text
+    with engine.connect() as conn:
+        conn.execute(sa_text("ALTER TABLE invoices ADD COLUMN amount_received FLOAT DEFAULT 0"))
+        conn.commit()
+except Exception:
+    pass
+try:
+    from sqlalchemy import text as sa_text
+    with engine.connect() as conn:
+        conn.execute(sa_text("ALTER TABLE invoices ADD COLUMN change_returned FLOAT DEFAULT 0"))
+        conn.commit()
+except Exception:
+    pass
 try:
     from app.models.hr import HRPosition
 except Exception:

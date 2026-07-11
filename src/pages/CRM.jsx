@@ -28,7 +28,7 @@ export default function CRM() {
   const [searchQuery, setSearchQuery] = useState('')
   const [form, setForm] = useState({ name: '', company: '', email: '', phone: '', stage: 'lead' })
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
 
   const load = useCallback(async () => {
     const data = await contactService.list()

@@ -14,7 +14,7 @@ export default function PaperSettings() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', width: '', height: '', unit: 'mm', category: 'custom', icon: '📐' })
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
 
   const load = async () => {
     setSizes(await paperSizeService.list())

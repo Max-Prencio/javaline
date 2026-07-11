@@ -147,3 +147,54 @@ export async function invoicePrintHtml(inv, formatMoney) {
 
   printIframe(fullHtml, `Factura ${inv.id}`)
 }
+
+export async function buildInvoiceHtml(inv, formatMoney) {
+  await preloadLogo()
+  const logoHtml = getLogoHtml()
+  const taxLabel = inv.taxLabel || 'ITBIS'
+
+  const body = [
+    `<div style="text-align:center;margin-bottom:12px"><h1 style="font-size:20px;margin:0;letter-spacing:2px;font-family:'Courier New',monospace">${inv.id}</h1><p style="font-size:11px;color:#6b5a4a;margin:4px 0 0">${inv.clientName}</p></div>`,
+    `<div style="display:flex;justify-content:space-between;margin-bottom:12px;font-size:11px;font-family:'Courier New',monospace;line-height:1.6">`,
+    `<div><strong>RNC:</strong> ${inv.rnc || 'N/A'}<br><strong>Dirección:</strong> Santo Domingo, RD</div>`,
+    `<div style="text-align:right"><strong>Fecha:</strong> ${inv.date}<br><strong>Vence:</strong> ${inv.dueDate || 'N/A'}<br><strong>Moneda:</strong> ${inv.currency || 'DOP'}<br><strong>Pago:</strong> ${inv.paymentType === 'credit' ? `Crédito (${inv.installmentPlan?.totalInstallments || 0} cuotas)` : 'Contado'} / ${inv.paymentMethod || 'N/A'}</div></div>`,
+    `<table style="width:100%;border-collapse:collapse;margin:10px 0;font-family:'Courier New',monospace;font-size:11px"><thead><tr>`,
+    `<th style="text-align:left;border-bottom:2px solid #1a1410;padding:5px 4px;font-size:10px;text-transform:uppercase">Producto</th>`,
+    `<th style="text-align:right;border-bottom:2px solid #1a1410;padding:5px 4px;font-size:10px;text-transform:uppercase">Cant</th>`,
+    `<th style="text-align:right;border-bottom:2px solid #1a1410;padding:5px 4px;font-size:10px;text-transform:uppercase">Precio</th>`,
+    `<th style="text-align:right;border-bottom:2px solid #1a1410;padding:5px 4px;font-size:10px;text-transform:uppercase">Total</th>`,
+    `</tr></thead><tbody>`,
+    ...(inv.items || []).map(it => `<tr><td style="padding:4px;border-bottom:1px solid #e0d8d0">${it.productName}</td><td style="padding:4px;border-bottom:1px solid #e0d8d0;text-align:right">${it.qty}</td><td style="padding:4px;border-bottom:1px solid #e0d8d0;text-align:right">$${formatMoney(it.price)}</td><td style="padding:4px;border-bottom:1px solid #e0d8d0;text-align:right">$${formatMoney(it.total)}</td></tr>`),
+    `</tbody></table>`,
+    `<table style="width:auto;margin-left:auto;min-width:240px;border-collapse:collapse;font-family:'Courier New',monospace;font-size:11px"><tbody>`,
+    `<tr><td style="padding:3px 4px;border-bottom:1px solid #e0d8d0">Subtotal</td><td style="padding:3px 4px;border-bottom:1px solid #e0d8d0;text-align:right">$${formatMoney(inv.subtotal)}</td></tr>`,
+    ...(inv.discountAmount > 0 ? [`<tr style="color:#cc3333"><td style="padding:3px 4px;border-bottom:1px solid #e0d8d0">Descuento${inv.discountType === 'percentage' ? ` (${inv.discount}%)` : ''}</td><td style="padding:3px 4px;border-bottom:1px solid #e0d8d0;text-align:right">-$${formatMoney(inv.discountAmount)}</td></tr>`] : []),
+    `<tr><td style="padding:3px 4px;border-bottom:1px solid #e0d8d0">${taxLabel}</td><td style="padding:3px 4px;border-bottom:1px solid #e0d8d0;text-align:right">$${formatMoney(inv.tax)}</td></tr>`,
+    `<tr style="font-weight:700"><td style="padding:6px 4px;border-top:2px solid #1a1410;border-bottom:none">TOTAL</td><td style="padding:6px 4px;border-top:2px solid #1a1410;border-bottom:none;text-align:right;font-size:12px">$${formatMoney(inv.total)}</td></tr>`,
+    `</tbody></table>`,
+    ...(inv.installmentPlan?.installments?.length ? [
+      `<div style="margin-top:16px;font-size:10px;font-family:'Courier New',monospace"><strong>Plan de Pagos:</strong></div>`,
+      `<table style="width:100%;border-collapse:collapse;font-size:9px;font-family:'Courier New',monospace"><tr><th style="text-align:left;padding:3px 4px;border-bottom:1px solid #1a1410">#</th><th style="text-align:left;padding:3px 4px;border-bottom:1px solid #1a1410">Vence</th><th style="text-align:right;padding:3px 4px;border-bottom:1px solid #1a1410">Monto</th><th style="text-align:right;padding:3px 4px;border-bottom:1px solid #1a1410">Estado</th></tr>`,
+      ...inv.installmentPlan.installments.map((inst, i) =>
+        `<tr><td style="padding:2px 4px">${i+1}</td><td style="padding:2px 4px">${inst.dueDate}</td><td style="padding:2px 4px;text-align:right">$${formatMoney(inst.amount)}</td><td style="padding:2px 4px;text-align:right">${inst.paid ? 'Pagada' : 'Pendiente'}</td></tr>`
+      ),
+      `</table>`,
+    ] : []),
+  ].join('\n')
+
+  return [
+    `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Factura ${inv.id}</title><style>`,
+    `@page{size:215.9mm 279.4mm;margin:12mm 8mm}`,
+    `*{box-sizing:border-box}`,
+    `body{font-family:'Courier New',monospace;padding:0;margin:0;color:#1a1410;font-size:11px}`,
+    `@media print{html,body{height:100%}}`,
+    `.logo-stamp{text-align:center;margin-bottom:8px}`,
+    `.logo-stamp img,.logo-stamp svg{height:28px}`,
+    `.footer{text-align:center;margin-top:20px;padding-top:8px;border-top:1px solid #e0d8d0;font-size:9px;color:#6b5a4a}`,
+    `</style></head><body>`,
+    `<div class="logo-stamp">${logoHtml}</div>`,
+    body,
+    `<div class="footer">javaline.app — Documento generado electrónicamente</div>`,
+    `</body></html>`,
+  ].join('\n')
+}

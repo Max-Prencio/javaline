@@ -3,7 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { FiFileText, FiPlus, FiX, FiDollarSign, FiCalendar, FiUsers, FiSearch, FiCheck, FiAlertTriangle, FiRefreshCw, FiPrinter, FiPercent } from 'react-icons/fi'
 import { invoiceService, productService, contactService } from '../services/entityService'
 import db from '../services/db'
-import { invoicePrintHtml } from '../utils/print'
+import { buildInvoiceHtml } from '../utils/print'
+import PrintPreviewModal from '../components/PrintPreviewModal'
+import { maskRNC } from '../utils/mask'
 
 const statusStyles = {
   paid: { bg: 'var(--success)', color: '#fff', label: 'Pagada' },
@@ -17,6 +19,23 @@ const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { st
 const rowItem = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } }
 
 function formatMoney(n) { return (n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 }) }
+
+function MaskedRNC({ value }) {
+  const [revealed, setRevealed] = useState(false)
+  if (!value) return <p style={{ margin: '4px 0', color: 'var(--text-muted)', fontSize: 14 }}>N/A</p>
+  return (
+    <p style={{ margin: '4px 0', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ color: 'var(--text-primary)', fontFamily: revealed ? 'inherit' : 'monospace' }}>
+        {revealed ? value : maskRNC(value)}
+      </span>
+      <button onClick={() => setRevealed(r => !r)}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--accent)', fontSize: 11, opacity: 0.7 }}
+        title={revealed ? 'Ocultar' : 'Revelar RNC'}>
+        {revealed ? '🙈' : '👁️'}
+      </button>
+    </p>
+  )
+}
 
 function calcDiscount(subtotal, discount, discountType) {
   if (!discount || discount <= 0) return 0
@@ -42,9 +61,11 @@ export default function Invoicing() {
   const [cashRegister, setCashRegister] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [detailModal, setDetailModal] = useState(null)
+  const [paymentModal, setPaymentModal] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [currencies, setCurrencies] = useState([])
   const [taxRates, setTaxRates] = useState([])
+  const [printPreview, setPrintPreview] = useState({ show: false, html: '', title: '' })
 
   const loadData = useCallback(async () => {
     const invs = await invoiceService.list()
@@ -53,7 +74,7 @@ export default function Invoicing() {
     setContacts(await contactService.list())
     setCurrencies(db.getAll('currencies'))
     setTaxRates(db.getAll('taxRates'))
-    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
     if (userId) {
       const { default: cashRegisterService } = await import('../services/cashRegisterService')
       setCashRegister(await cashRegisterService.getOpen(userId))
@@ -63,20 +84,28 @@ export default function Invoicing() {
   useEffect(() => { loadData() }, [loadData])
 
   const handleReconcile = async (invId) => {
-    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
     if (!cashRegister) { alert('Debes abrir la caja primero'); return }
-    await invoiceService.update(invId, { status: 'paid' }, userId)
+    const inv = invoices.find(i => i.id === invId)
+    if (!inv) return
+    setPaymentModal(inv)
+  }
+
+  const confirmPayment = async (invId, amountReceived, changeReturned) => {
+    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
+    await invoiceService.update(invId, { status: 'paid', amountReceived, changeReturned }, userId)
+    const inv = invoices.find(i => i.id === invId)
     const { default: cashRegisterService } = await import('../services/cashRegisterService')
     await cashRegisterService.addTransaction(cashRegister.id, {
-      type: 'income', concept: `Factura ${invId}`, amount: invoices.find(i => i.id === invId)?.total || 0,
-      paymentMethod: invoices.find(i => i.id === invId)?.paymentMethod || 'transfer', reference: invId,
+      type: 'income', concept: `Factura ${invId}`, amount: amountReceived - changeReturned,
+      paymentMethod: inv?.paymentMethod || 'transfer', reference: invId,
     }, userId)
-    db.addAudit({ action: 'reconcile', store: 'invoices', detail: `Pago conciliado: ${invId}`, userId })
+    db.addAudit({ action: 'reconcile', store: 'invoices', detail: `Pago registrado: ${invId} — Recibido: $${formatMoney(amountReceived)}, Cambio: $${formatMoney(changeReturned)}`, userId })
+    setPaymentModal(null)
     loadData()
   }
 
   const handleCancelReconciliation = async (invId) => {
-    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
     const inv = invoices.find(i => i.id === invId)
     await invoiceService.update(invId, { status: 'rejected' }, userId)
     if (cashRegister && inv) {
@@ -89,7 +118,7 @@ export default function Invoicing() {
   }
 
   const handleRectify = async (invId) => {
-    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
     const original = invoices.find(i => i.id === invId)
     await invoiceService.update(invId, { status: 'rectified', rectifiedBy: 'pending' }, userId)
     const rectified = await invoiceService.create({
@@ -101,8 +130,9 @@ export default function Invoicing() {
     loadData()
   }
 
-  const handlePrint = (inv) => {
-    invoicePrintHtml(inv, formatMoney)
+  const handlePrint = async (inv) => {
+    const html = await buildInvoiceHtml(inv, formatMoney)
+    setPrintPreview({ show: true, html, title: `Factura ${inv.id}`, reportType: inv.type === 'supplier' ? 'supplier_invoice' : 'customer_invoice' })
   }
 
   const filtered = invoices.filter(inv =>
@@ -190,7 +220,12 @@ export default function Invoicing() {
                         <span style={{ display: 'inline-flex', padding: '4px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, letterSpacing: '0.3px', background: st.bg, color: st.color }}>{st.label}</span>
                       </td>
                       <td style={{ padding: '14px 20px', fontSize: 12, color: 'var(--text-secondary)' }}>
-                        {inv.paymentType === 'credit' ? `${inv.installmentPlan?.totalInstallments || 0} cuotas` : inv.paymentMethod || 'N/A'}
+                        {inv.status === 'paid' && inv.amountReceived > 0 ? (
+                          <div>
+                            <span style={{ color: '#10b981', fontWeight: 600 }}>${formatMoney(inv.amountReceived)}</span>
+                            {inv.changeReturned > 0 && <span style={{ display: 'block', fontSize: 11, color: '#f59e0b' }}>Cambio: ${formatMoney(inv.changeReturned)}</span>}
+                          </div>
+                        ) : inv.paymentType === 'credit' ? `${inv.installmentPlan?.totalInstallments || 0} cuotas` : inv.paymentMethod || 'N/A'}
                       </td>
                       <td style={{ padding: '14px 20px' }}>
                         <div style={{ display: 'flex', gap: 6 }}>
@@ -234,6 +269,10 @@ export default function Invoicing() {
       <CreateInvoiceModal open={modalOpen} onClose={() => setModalOpen(false)} onDone={loadData} products={products} contacts={contacts} currencies={currencies} cashRegister={cashRegister} taxRates={taxRates} />
 
       <DetailModal inv={detailModal} onClose={() => setDetailModal(null)} taxRates={taxRates} />
+
+      <PaymentModal inv={paymentModal} onClose={() => setPaymentModal(null)} onConfirm={confirmPayment} formatMoney={formatMoney} />
+
+      <PrintPreviewModal show={printPreview.show} onClose={() => setPrintPreview({ show: false, html: '', title: '' })} html={printPreview.html} title={printPreview.title} reportType={printPreview.reportType} />
     </div>
   )
 }
@@ -342,7 +381,7 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
       }))
       form.installmentPlan = { totalInstallments, amountPerInstallment, frequency: 'monthly', startDate: installments[0].dueDate, installments }
     }
-    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').id
+    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
     await invoiceService.create({ ...form, status: 'pending', cashRegisterId: cashRegister?.id || null }, userId)
     db.addAudit({ action: 'create_invoice', store: 'invoices', detail: `Factura creada: ${form.clientName} — $${formatMoney(form.total)}`, userId })
     reset()
@@ -643,7 +682,7 @@ function DetailModal({ inv, onClose, taxRates }) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
             <div><span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Cliente</span><p style={{ margin: '4px 0', color: 'var(--text-primary)', fontSize: 14 }}>{inv.clientName}</p></div>
-            <div><span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>RNC</span><p style={{ margin: '4px 0', color: 'var(--text-primary)', fontSize: 14 }}>{inv.rnc || 'N/A'}</p></div>
+            <div><span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>RNC</span><MaskedRNC value={inv.rnc} /></div>
             <div><span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Fecha</span><p style={{ margin: '4px 0', color: 'var(--text-primary)', fontSize: 14 }}>{inv.date}</p></div>
             <div><span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Vencimiento</span><p style={{ margin: '4px 0', color: 'var(--text-primary)', fontSize: 14 }}>{inv.dueDate || 'N/A'}</p></div>
             <div><span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Moneda</span><p style={{ margin: '4px 0', color: 'var(--text-primary)', fontSize: 14 }}>{inv.currency || 'DOP'}</p></div>
@@ -688,6 +727,132 @@ function DetailModal({ inv, onClose, taxRates }) {
               <span style={{ color: 'var(--text-primary)' }}>Total</span>
               <span style={{ color: 'var(--accent)' }}>${formatMoney(inv.total)}</span>
             </div>
+            {inv.status === 'paid' && inv.amountReceived > 0 && (
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 2 }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Monto recibido</span>
+                  <span style={{ color: '#10b981', fontWeight: 600 }}>${formatMoney(inv.amountReceived)}</span>
+                </div>
+                {inv.changeReturned > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                    <span style={{ color: '#f59e0b' }}>Cambio devuelto</span>
+                    <span style={{ color: '#f59e0b', fontWeight: 600 }}>${formatMoney(inv.changeReturned)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
+function PaymentModal({ inv, onClose, onConfirm, formatMoney }) {
+  const [amountReceived, setAmountReceived] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  if (!inv) return null
+
+  const total = inv.total || 0
+  const isCash = inv.paymentMethod === 'cash'
+  const received = Number(amountReceived) || 0
+  const difference = received - total
+  const change = isCash && difference > 0 ? difference : 0
+  const insufficient = isCash && received > 0 && received < total
+  const exactOrOver = !isCash || received >= total
+
+  const handleConfirm = async () => {
+    if (isCash && received <= 0) { alert('Ingresa el monto recibido'); return }
+    if (isCash && received < total) { alert('El monto recibido es menor al total'); return }
+    setLoading(true)
+    await onConfirm(inv.id, isCash ? received : total, change)
+    setLoading(false)
+  }
+
+  return (
+    <AnimatePresence>
+      <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+        onClick={onClose}>
+        <motion.div key="modal" initial={{ opacity: 0, scale: 0.92, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 10 }}
+          onClick={e => e.stopPropagation()}
+          style={{ width: 480, padding: '32px 36px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, boxShadow: '0 30px 80px rgba(0,0,0,0.6)' }}>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <FiDollarSign style={{ color: 'var(--accent)', fontSize: 22 }} />
+              <h2 style={{ color: 'var(--text-primary)', fontSize: 20, fontWeight: 700, margin: 0 }}>Registrar Pago</h2>
+            </div>
+            <motion.button whileHover={{ rotate: 90 }} onClick={onClose}
+              style={{ display: 'flex', padding: 8, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-muted)', cursor: 'pointer' }}>
+              <FiX size={20} />
+            </motion.button>
+          </div>
+
+          <div style={{ background: 'var(--bg-secondary)', padding: '16px', borderRadius: 12, marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Factura</span>
+              <span style={{ color: 'var(--text-primary)', fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{inv.id}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Cliente</span>
+              <span style={{ color: 'var(--text-primary)' }}>{inv.clientName}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Método de pago</span>
+              <span style={{ color: 'var(--text-primary)', textTransform: 'capitalize' }}>{inv.paymentMethod === 'transfer' ? 'Transferencia' : inv.paymentMethod === 'card' ? 'Tarjeta' : inv.paymentMethod === 'cash' ? 'Efectivo' : inv.paymentMethod === 'check' ? 'Cheque' : inv.paymentMethod}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 20, fontWeight: 700, borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 6 }}>
+              <span style={{ color: 'var(--text-primary)' }}>Total a pagar</span>
+              <span style={{ color: 'var(--accent)' }}>${formatMoney(total)}</span>
+            </div>
+          </div>
+
+          {isCash ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 20 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Monto recibido (Efectivo)</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 16, fontWeight: 600 }}>$</span>
+                  <input type="number" min={0} step="0.01" value={amountReceived} onChange={e => setAmountReceived(e.target.value)}
+                    placeholder="0.00" autoFocus
+                    style={{ width: '100%', padding: '14px 14px 14px 32px', background: 'var(--bg-card)', border: `1px solid ${insufficient ? '#ef4444' : 'var(--border)'}`, borderRadius: 10, color: 'var(--text-primary)', fontSize: 18, fontWeight: 600, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+                {insufficient && (
+                  <span style={{ fontSize: 12, color: '#ef4444', fontWeight: 500 }}>El monto es menor al total de la factura</span>
+                )}
+              </div>
+
+              {received > 0 && !insufficient && (
+                <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderRadius: 10, background: change > 0 ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)', border: `1px solid ${change > 0 ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)'}` }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: change > 0 ? '#f59e0b' : '#10b981' }}>
+                    {change > 0 ? 'Cambio a devolver' : 'Pago exacto'}
+                  </span>
+                  <span style={{ fontSize: 24, fontWeight: 700, color: change > 0 ? '#f59e0b' : '#10b981' }}>
+                    ${formatMoney(change)}
+                  </span>
+                </motion.div>
+              )}
+            </div>
+          ) : (
+            <div style={{ padding: '14px 16px', borderRadius: 10, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', marginBottom: 20 }}>
+              <p style={{ margin: 0, fontSize: 13, color: '#10b981', fontWeight: 500 }}>
+                Pago por {inv.paymentMethod === 'transfer' ? 'transferencia' : inv.paymentMethod === 'card' ? 'tarjeta' : 'cheque'} — Se registra el importe exacto de ${formatMoney(total)}
+              </p>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={onClose}
+              style={{ padding: '12px 24px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>
+              Cancelar
+            </motion.button>
+            <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={handleConfirm} disabled={loading || (isCash && !exactOrOver)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 32px', background: (isCash && !exactOrOver) ? '#6b5a4a' : 'var(--accent-gradient)', border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 600, cursor: (isCash && !exactOrOver) ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>
+              <FiCheck size={16} /> {loading ? 'Procesando...' : 'Confirmar Pago'}
+            </motion.button>
           </div>
         </motion.div>
       </motion.div>

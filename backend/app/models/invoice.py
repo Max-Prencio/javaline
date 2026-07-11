@@ -31,6 +31,8 @@ class Invoice(Base):
     notes = Column(Text, default="")
     installment_plan = Column(JSON, nullable=True)
     cash_register_id = Column(String, nullable=True)
+    amount_received = Column(Float, default=0)
+    change_returned = Column(Float, default=0)
     rectifies_id = Column(String, nullable=True)
     created_by = Column(String, nullable=True)
     paid_at = Column(DateTime, nullable=True)
