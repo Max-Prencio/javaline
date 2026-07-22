@@ -3,6 +3,7 @@ import { FiMail, FiLock, FiEye, FiEyeOff, FiArrowRight, FiShield } from 'react-i
 import { motion } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
+import securityService from '../services/securityService'
 
 export default function Login() {
   const { login, verifyTwoFactor, error: authError } = useAuth()
@@ -22,6 +23,7 @@ export default function Login() {
     e.preventDefault()
     setError('')
     if (!email || !password) { setError('Completa todos los campos'); return }
+    if (!securityService.validateEmail(email)) { setError('Ingresa un correo electrónico válido'); return }
     setLoading(true)
     const result = await login(email, password)
     if (result === true) {

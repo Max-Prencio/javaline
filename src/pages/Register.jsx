@@ -17,6 +17,7 @@ export default function Register() {
     e.preventDefault()
     setLocalError('')
     if (!form.name || !form.email || !form.password) { setLocalError('Completa todos los campos'); return }
+    if (!securityService.validateEmail(form.email)) { setLocalError('Ingresa un correo electrónico válido'); return }
     if (form.password !== form.confirm) { setLocalError('Las contraseñas no coinciden'); return }
     const pwCheck = securityService.validatePassword(form.password)
     if (!pwCheck.valid) { setLocalError(pwCheck.errors[0]); return }
