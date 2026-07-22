@@ -1,14 +1,30 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, model_validator
 from typing import Optional, Any
 from datetime import datetime
+import re
 
 
-class InvoiceCreate(BaseModel):
+def to_snake(s: str) -> str:
+    return re.sub(r'(?<!^)(?=[A-Z])', '_', s).lower()
+
+
+class CamelModel(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode='before')
+    @classmethod
+    def convert_camel_to_snake(cls, data):
+        if isinstance(data, dict):
+            return {to_snake(k): v for k, v in data.items()}
+        return data
+
+
+class InvoiceCreate(CamelModel):
     type: str = "client"
-    client_name: str
+    client_name: str = ""
     client_id: Optional[str] = None
     rnc: str = ""
-    date: str
+    date: str = ""
     due_date: str = ""
     currency: str = "DOP"
     payment_type: str = "debit"
@@ -30,14 +46,33 @@ class InvoiceCreate(BaseModel):
     status: str = "pending"
 
 
-class InvoiceUpdate(BaseModel):
+class InvoiceUpdate(CamelModel):
     status: Optional[str] = None
     client_name: Optional[str] = None
+    client_id: Optional[str] = None
+    rnc: Optional[str] = None
+    date: Optional[str] = None
+    due_date: Optional[str] = None
+    currency: Optional[str] = None
+    payment_type: Optional[str] = None
     payment_method: Optional[str] = None
-    paid_at: Optional[str] = None
+    items: Optional[list] = None
+    subtotal: Optional[float] = None
+    discount: Optional[float] = None
+    discount_type: Optional[str] = None
+    discount_amount: Optional[float] = None
+    taxable_base: Optional[float] = None
+    tax_rate_id: Optional[str] = None
+    tax: Optional[float] = None
+    total: Optional[float] = None
     notes: Optional[str] = None
+    installment_plan: Optional[Any] = None
+    cash_register_id: Optional[str] = None
     amount_received: Optional[float] = None
     change_returned: Optional[float] = None
+    paid_at: Optional[str] = None
+    rectified_by: Optional[str] = None
+    rectifies_id: Optional[str] = None
 
 
 class InvoiceResponse(BaseModel):

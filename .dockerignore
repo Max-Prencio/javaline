@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.git/
+**/__pycache__/
+*.pyc
+.env
+backend/venv/
+backend/uploads/
+*.md
+.oxlintrc.json
+vercel.json
+logo.zip
+1x/
+4x/

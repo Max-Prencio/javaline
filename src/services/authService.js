@@ -1,12 +1,10 @@
 import api from './apiClient'
-import securityService from './securityService'
 import db from './db'
 import bcrypt from 'bcryptjs'
 
-// --- BRUTE FORCE PROTECTION ---
 const ATTEMPTS_KEY = 'javaline_login_attempts'
 const MAX_ATTEMPTS = 5
-const LOCKOUT_MS = 15 * 60 * 1000 // 15 minutes
+const LOCKOUT_MS = 15 * 60 * 1000
 
 function getAttempts(email) {
   try {
@@ -42,7 +40,6 @@ function checkLockout(email) {
   }
 }
 
-// --- LOCAL FALLBACK ---
 async function localLogin(email, password) {
   checkLockout(email)
   const users = db.getAll('users')
@@ -61,7 +58,6 @@ async function localLogin(email, password) {
     throw new Error(`Cuenta bloqueada por 15 min. Demasiados intentos.`)
   }
   recordAttempt(email, true)
-  // eslint-disable-next-line no-unused-vars
   const { password: _pw, ...safeUser } = user
   return safeUser
 }
@@ -81,14 +77,8 @@ async function localRegister({ name, email, password }) {
     permissions: ['factura_cliente'],
     photo: null,
   })
-  // eslint-disable-next-line no-unused-vars
   const { password: _pw, ...safeUser } = newUser
   return safeUser
-}
-
-function saveSession(user, token) {
-  if (token) api.setToken(token)
-  securityService.createSession({ ...user, userId: user.id || user.userId })
 }
 
 async function tryApi(fn) {
@@ -99,16 +89,12 @@ const authService = {
   async login(email, password) {
     const result = await tryApi(() => api.post('/auth/login', { email, password }))
     if (result?.user) {
-      saveSession(result.user, result.access_token)
       return result.user
     }
-    // Fallback local
     const user = await localLogin(email, password)
-    // Check 2FA
     if (user.twoFactorEnabled) {
       return { twoFactorRequired: true, email: user.email }
     }
-    saveSession(user, null)
     return user
   },
 
@@ -119,34 +105,32 @@ const authService = {
       password: data.password,
     }))
     if (result?.user) {
-      saveSession(result.user, result.access_token)
       return result.user
     }
-    // Fallback local
     const user = await localRegister({
       name: data.name || data.email.split('@')[0],
       email: data.email,
       password: data.password,
     })
-    saveSession(user, null)
     return user
+  },
+
+  async logout() {
+    await tryApi(() => api.post('/auth/logout'))
   },
 
   async verifyTwoFactor(email, code) {
     const result = await tryApi(() => api.post('/auth/verify-2fa', { email, code }))
     if (result?.user) {
-      saveSession(result.user, result.access_token)
       return result.user
     }
-    // Fallback local
     const users = db.getAll('users')
     const user = users.find(u => u.email?.toLowerCase() === email?.toLowerCase())
     if (!user || !user.twoFactorEnabled) throw new Error('Usuario no encontrado')
+    const { default: securityService } = await import('./securityService')
     const valid = securityService.verifyTwoFactorCode(user.twoFactorSecret, code)
     if (!valid) throw new Error('Código 2FA inválido')
-    // eslint-disable-next-line no-unused-vars
     const { password: _pw, ...safeUser } = user
-    saveSession(safeUser, null)
     return safeUser
   },
 
@@ -161,7 +145,6 @@ const authService = {
     if (result) return result
     const user = db.getById('users', id)
     if (!user) return null
-    // eslint-disable-next-line no-unused-vars
     const { password: _pw, ...safeUser } = user
     return safeUser
   },
@@ -197,7 +180,7 @@ const authService = {
   async sendInvitation(email, invitedBy) {
     const result = await tryApi(() => api.post('/auth/invite', { email, invitedBy }))
     if (result) return result
-    const code = Math.random().toString(36).slice(2, 10).toUpperCase()
+    const code = crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()
     return db.insert('invitations', {
       email, invitedBy, code,
       status: 'pending',
@@ -210,10 +193,8 @@ const authService = {
       api.post('/auth/accept-invitation', { code, name, password })
     )
     if (result?.user) {
-      saveSession(result.user, result.access_token)
       return result.user
     }
-    // Fallback local
     const invitations = db.getAll('invitations')
     const inv = invitations.find(i => i.code === code && i.status === 'pending')
     if (!inv) throw new Error('Invitación inválida o expirada')
@@ -225,9 +206,7 @@ const authService = {
       permissions: ['factura_cliente'], photo: null,
     })
     db.update('invitations', inv.id, { status: 'accepted' })
-    // eslint-disable-next-line no-unused-vars
     const { password: _pw, ...safeUser } = newUser
-    saveSession(safeUser, null)
     return safeUser
   },
 
@@ -240,7 +219,7 @@ const authService = {
   async resendInvitation(id) {
     const result = await tryApi(() => api.post(`/auth/invitations/${id}/resend`))
     if (result) return result
-    const code = Math.random().toString(36).slice(2, 10).toUpperCase()
+    const code = crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()
     return db.update('invitations', id, {
       code,
       status: 'pending',
@@ -258,6 +237,28 @@ const authService = {
     const result = await tryApi(() => api.post(`/users/${id}/activate`))
     if (result) return result
     return db.update('users', id, { status: 'active' })
+  },
+
+  async exportUserData(userId) {
+    const result = await tryApi(() => api.get(`/users/${userId}/export`))
+    if (result) return result
+    const data = {}
+    db.STORES.forEach(store => { data[store] = db.getAll(store) })
+    if (data.users) data.users = data.users.map(({ password: _pw, ...u }) => u)
+    db.addAudit({ action: 'data_export', store: 'system', detail: 'Exportación de datos realizada', userId })
+    return { exportedAt: new Date().toISOString(), version: 1, data }
+  },
+
+  async deleteAccount(userId, email) {
+    const result = await tryApi(() => api.delete(`/users/${userId}`))
+    if (result) return result
+    db.addAudit({ action: 'account_deleted', store: 'system', detail: `Cuenta eliminada: ${email}`, userId })
+    db.STORES.forEach(store => {
+      if (store === 'users') {
+        const users = db.getAll('users').filter(u => u.id !== userId)
+        localStorage.setItem('javaline_users', JSON.stringify(users))
+      }
+    })
   },
 }
 

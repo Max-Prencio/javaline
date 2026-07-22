@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: javaline-backend
+  namespace: javaline
+  labels:
+    app: javaline
+    component: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: javaline
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: javaline
+        component: backend
+    spec:
+      containers:
+        - name: backend
+          image: javaline-backend:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: javaline-secrets
+                  key: DATABASE_URL
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: javaline-secrets
+                  key: SECRET_KEY
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: javaline-secrets
+                  key: OPENAI_API_KEY
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+      volumes:
+        - name: uploads
+          emptyDir: {}

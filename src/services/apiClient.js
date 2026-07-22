@@ -1,4 +1,7 @@
-const API_BASE = ''
+// VITE_API_URL must be set in Vercel environment variables to point at the deployed backend.
+// Example: https://javaline-api.railway.app
+// When not set (local dev), defaults to '' so requests go to the same origin (vite proxy or local uvicorn).
+const API_BASE = import.meta.env.VITE_API_URL || ''
 
 function getToken() {
   try {

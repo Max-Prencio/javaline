@@ -1,0 +1,154 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: javaline-ingress
+  namespace: javaline
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: javaline.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-frontend
+                port:
+                  number: 80
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /ai
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /users
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /inventory
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /invoices
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /contacts
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /purchases
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /sales
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /approvals
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /approval-hierarchies
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /cash-registers
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /branches
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /pocket
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /hr
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /duplicates
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /business-context
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000
+          - path: /uploads
+            pathType: Prefix
+            backend:
+              service:
+                name: javaline-backend
+                port:
+                  number: 8000

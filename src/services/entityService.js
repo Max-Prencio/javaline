@@ -7,6 +7,10 @@ const API_MAP = {
   'contacts': '/contacts',
   'employees': '/users',
   'purchases': '/purchases',
+  'tasks': '/tasks',
+  'meetings': '/meetings',
+  'notifications': '/notifications',
+  'sales': '/sales',
 }
 
 function delay(ms = 200) { return new Promise(r => setTimeout(r, ms)) }
@@ -165,7 +169,7 @@ export const productBusinessLogic = {
     const newStock = Math.max(0, (product.stock || 0) + delta)
     return productService.update(id, { stock: newStock }, userId)
   },
-  async recordSale(id, qty, userId) {
+  async recordSale(id, qty) {
     const product = await productService.getById(id)
     if (!product) throw new Error('Producto no encontrado')
     const newStock = Math.max(0, (product.stock || 0) - qty)

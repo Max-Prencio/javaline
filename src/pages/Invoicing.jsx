@@ -190,7 +190,7 @@ export default function Invoicing() {
             style={{ width: '100%', padding: '13px 14px 13px 44px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
         </div>
 
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'auto' }}>
           <motion.table style={{ width: '100%', borderCollapse: 'collapse' }} variants={container} initial="hidden" animate="show">
             <thead>
               <tr>

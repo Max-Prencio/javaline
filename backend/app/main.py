@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 
+from .config import CORS_ORIGINS
 from .database import engine, Base
 from .models import *  # noqa: ensure all models are registered
 from .routes import auth, purchases, approvals, inventory, sales, users, invoices, contacts, cash_registers, branches, approval_hierarchies, pocket, duplicates, ai_assistant, business_context, hr
@@ -44,7 +45,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173", "http://localhost:5174"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

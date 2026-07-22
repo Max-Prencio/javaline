@@ -1,14 +1,16 @@
 // CORE DATABASE - localStorage abstraction with audit trail
 import bcrypt from 'bcryptjs'
 const DB_PREFIX = 'javaline_'
-const AUDIT_KEY = `${DB_PREFIX}audit`
 
 const STORES = ['users', 'profiles', 'invoices', 'contacts', 'employees',
   'purchases', 'products', 'tasks', 'meetings', 'roles', 'chats',
   'notifications', 'invitations', 'settings',
   'currencies', 'cashRegisters', 'accounts', 'journalEntries',
   'approvalHierarchies', 'taxRates', 'installmentPlans',
-  'inventory', 'stockMovements']
+  'inventory', 'stockMovements',
+  'accountsReceivable', 'accountsPayable', 'debitNotes', 'creditNotes',
+  'checks', 'petty_cash_funds', 'pettyCash', 'fixedAssets',
+  'income_records', 'cost_records', 'cashReconciliations', 'ncf_sequences']
 
 function init() {
   STORES.forEach(store => {
@@ -57,10 +59,10 @@ function query(store, fn) {
 function insert(store, item) {
   const items = getStore(store)
   const newItem = {
-    id: `${store.slice(0,-1)}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...item,
+    id: item.id != null ? item.id : crypto.randomUUID(),
   }
   items.push(newItem)
   setStore(store, items)
@@ -113,10 +115,10 @@ function getAudit(filters = {}) {
 // --- SEED DATA ---
 const SEED_DATA = {
   users: [
-    { id: 'user_admin', name: 'Maxwell', email: 'admin@javaline.app', password: 'admin123',
+    { id: 'user_admin', name: 'Maxwell', email: 'admin@javaline.app', password: '',
       role: 'admin', photo: null, phone: '+1 809-555-0100', position: 'Desarrollador Full Stack',
       bio: 'Creador de Javaline.', notificationEmail: 'admin@javaline.app',
-      altEmail: 'maxwell@javaline.app', status: 'active', permissions: ['factura_cliente', 'factura_proveedor', 'caja', 'contabilidad', 'todos'], createdAt: '2026-01-01T00:00:00Z' },
+      altEmail: 'maxwell@javaline.app', status: 'active', permissions: ['factura_cliente', 'factura_proveedor', 'caja', 'contabilidad', 'todos'], createdAt: '2026-01-01T00:00:00Z', mustChangePassword: true },
   ],
   invoices: [
     { id: 'FAC-001', type: 'client', documentType: 'factura', date: '2026-05-28', dueDate: '2026-06-28',
@@ -268,6 +270,15 @@ const SEED_DATA = {
       { from: 'them', text: '¿Puedes agendar la reunión?', time: 'Lun 14:15' },
     ]},
   ],
+  ncf_sequences: [
+    { id: 'NCF-B01', type: 'B01', name: 'Crédito Fiscal', sequence: 1, active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'NCF-B02', type: 'B02', name: 'Consumidor Final', sequence: 1, active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'NCF-B04', type: 'B04', name: 'Nota de Crédito', sequence: 1, active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'NCF-B14', type: 'B14', name: 'Régimen Especial', sequence: 1, active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'NCF-B15', type: 'B15', name: 'Gubernamental', sequence: 1, active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'NCF-B16', type: 'B16', name: 'Exportaciones', sequence: 1, active: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'NCF-B34', type: 'B34', name: 'Nota de Débito', sequence: 1, active: true, createdAt: '2026-01-01T00:00:00Z' },
+  ],
 }
 
 // --- VERSIONED MIGRATIONS ---
@@ -326,11 +337,14 @@ function seedAll(force = false) {
   // Hash seed passwords with bcrypt (only on first load)
   const seedCopy = JSON.parse(JSON.stringify(SEED_DATA))
   if (seedCopy.users) {
-    seedCopy.users = seedCopy.users.map(u => ({
-      ...u,
-      // Default password 'admin123' — change immediately in production
-      password: bcrypt.hashSync(u.password, 10),
-    }))
+    seedCopy.users = seedCopy.users.map(u => {
+      if (u.mustChangePassword) {
+        const tempPw = crypto.randomUUID()
+        try { sessionStorage.setItem('javaline_first_login_pw', tempPw) } catch {}
+        return { ...u, password: bcrypt.hashSync(tempPw, 10) }
+      }
+      return { ...u, password: u.password ? bcrypt.hashSync(u.password, 10) : '' }
+    })
   }
 
   if (force) {

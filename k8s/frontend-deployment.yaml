@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: javaline-frontend
+  namespace: javaline
+  labels:
+    app: javaline
+    component: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: javaline
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: javaline
+        component: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: javaline-frontend:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            failureThreshold: 3

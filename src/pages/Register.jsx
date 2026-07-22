@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FiMail, FiLock, FiUser, FiArrowRight, FiEye, FiEyeOff } from 'react-icons/fi'
 import { useAuth } from '../contexts/AuthContext'
+import securityService from '../services/securityService'
 
 export default function Register() {
   const { register, error } = useAuth()
@@ -17,7 +18,8 @@ export default function Register() {
     setLocalError('')
     if (!form.name || !form.email || !form.password) { setLocalError('Completa todos los campos'); return }
     if (form.password !== form.confirm) { setLocalError('Las contraseñas no coinciden'); return }
-    if (form.password.length < 6) { setLocalError('La contraseña debe tener al menos 6 caracteres'); return }
+    const pwCheck = securityService.validatePassword(form.password)
+    if (!pwCheck.valid) { setLocalError(pwCheck.errors[0]); return }
     setLoading(true)
     const ok = await register({ name: form.name, email: form.email, password: form.password })
     if (ok) navigate('/')

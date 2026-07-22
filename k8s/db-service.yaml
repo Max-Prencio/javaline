@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: javaline-db
+  namespace: javaline
+  labels:
+    app: javaline
+    component: database
+spec:
+  type: ClusterIP
+  selector:
+    app: javaline
+    component: database
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
