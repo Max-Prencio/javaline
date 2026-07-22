@@ -71,21 +71,34 @@ public class SalesController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] Sale sale)
+    public async Task<IActionResult> Create([FromBody] CreateSaleDto dto)
     {
-        var product = await _db.InventoryItems.FindAsync(new object[] { sale.ProductId });
+        if (string.IsNullOrWhiteSpace(dto.ProductId))
+            return BadRequest(new { detail = "ProductId es requerido." });
+        if (dto.Quantity <= 0)
+            return BadRequest(new { detail = "Quantity debe ser mayor a 0." });
+        if (dto.UnitPrice <= 0)
+            return BadRequest(new { detail = "UnitPrice debe ser mayor a 0." });
+
+        var product = await _db.InventoryItems.FindAsync(dto.ProductId);
         if (product == null)
             return BadRequest(new { detail = "Producto no encontrado." });
 
-        sale.Id = Guid.NewGuid().ToString();
-        sale.CreatedAt = DateTime.UtcNow;
-        sale.Total = sale.Quantity * sale.UnitPrice;
-
-        // Decrease inventory stock
-        if (product.Stock < sale.Quantity)
+        if (product.Stock < dto.Quantity)
             return BadRequest(new { detail = "Stock insuficiente." });
 
-        product.Stock -= sale.Quantity;
+        var sale = new Sale
+        {
+            Id = Guid.NewGuid().ToString(),
+            ProductId = dto.ProductId,
+            Customer = dto.Customer,
+            Quantity = dto.Quantity,
+            UnitPrice = dto.UnitPrice,
+            Total = dto.Quantity * dto.UnitPrice,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        product.Stock -= dto.Quantity;
         _db.InventoryItems.Update(product);
 
         await _db.Sales.AddAsync(sale);
@@ -117,3 +130,10 @@ public class SalesController : ControllerBase
         });
     }
 }
+
+public record CreateSaleDto(
+    string ProductId,
+    string? Customer,
+    int Quantity,
+    decimal UnitPrice
+);
