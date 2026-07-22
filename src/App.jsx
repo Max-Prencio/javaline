@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import Layout from './components/Layout'
 import { preloadLogo } from './utils/print'
+import logger from './services/logger'
 
 // Lazy-loaded pages for code splitting
 const Login = lazy(() => import('./pages/Login'))
@@ -53,7 +54,7 @@ class ErrorBoundary extends Component {
     this.state = { hasError: false }
   }
   static getDerivedStateFromError() { return { hasError: true } }
-  componentDidCatch(error, info) { console.error('App error:', error, info) }
+  componentDidCatch(error, info) { logger.error('App', 'Uncaught error', { error, componentStack: info?.componentStack }) }
   render() {
     if (this.state.hasError) return (
       <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:16, padding:24 }}>
@@ -75,7 +76,7 @@ class RouteErrorBoundary extends Component {
     this.state = { hasError: false }
   }
   static getDerivedStateFromError() { return { hasError: true } }
-  componentDidCatch(error, info) { console.error(`Route error [${this.props.route}]:`, error, info) }
+  componentDidCatch(error, info) { logger.error('RouteErrorBoundary', `Route error [${this.props.route}]`, { error, componentStack: info?.componentStack }) }
   render() {
     if (this.state.hasError) return (
       <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60vh', gap:12, padding:24 }}>

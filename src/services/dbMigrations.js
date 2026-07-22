@@ -1,4 +1,5 @@
 import { getStore, setStore } from './dbStore.js'
+import logger from './logger.js'
 
 const DB_PREFIX = 'javaline_'
 export const DB_VERSION = 3
@@ -44,7 +45,7 @@ export function runMigrations() {
       try {
         MIGRATIONS[v - 1]()
       } catch (e) {
-        console.error(`[db] Migration v${v} failed:`, e)
+        logger.error('dbMigrations', `Migration v${v} failed`, e)
       }
     }
   }

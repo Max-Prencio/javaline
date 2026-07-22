@@ -1,5 +1,6 @@
 import api from './apiClient'
 import db from './db'
+import logger from './logger'
 
 const API_MAP = {
   'products': '/inventory',
@@ -29,7 +30,7 @@ function createEntityService(store, label) {
 
   async function tryApi(fn) {
     if (!apiPath) return null
-    try { return await fn() } catch (e) { console.warn(`[entityService] API ${store} fallback: ${e.message}`); return null }
+    try { return await fn() } catch (e) { logger.warn('entityService', `API ${store} fallback`, e); return null }
   }
 
   return {

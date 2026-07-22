@@ -5,6 +5,8 @@ import { FiShoppingCart, FiPlus, FiX, FiPackage, FiSearch, FiShield, FiCheckCirc
 import approvalService from '../services/approvalService'
 import inventoryService from '../services/inventoryService'
 import api from '../services/apiClient'
+import { useAuth } from '../contexts/AuthContext'
+import logger from '../services/logger'
 
 const statusStyles = {
   recibido: { bg: 'var(--success)', color: '#fff', label: 'Recibido' },
@@ -31,8 +33,8 @@ export default function Purchases() {
   const [approvalInfo, setApprovalInfo] = useState({})
   const [loading, setLoading] = useState(true)
 
-  const session = JSON.parse(localStorage.getItem('javaline_session') || '{}')
-  const userId = session.userId || session.id
+  const { user: session } = useAuth()
+  const userId = session?.userId || session?.id
 
   const loadOrders = async () => {
     setLoading(true)
@@ -47,7 +49,7 @@ export default function Purchases() {
       })
       setApprovalInfo(info)
     } catch (e) {
-      console.error('Error loading orders:', e)
+      logger.error('Purchases', 'Error loading orders', e)
     }
     setLoading(false)
   }
@@ -306,8 +308,8 @@ function CreateOrderModal({ open, onClose, form, onChange, onSubmit }) {
 }
 
 function ApprovalModal({ open, onClose, hierarchies, hForm, setHForm, onAdd, load }) {
+  useEffect(() => { if (open) load() }, [open, load])
   if (!open) return null
-  useEffect(() => { if (open) load() }, [open])
   return (
     <AnimatePresence>
       <motion.div key="backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}

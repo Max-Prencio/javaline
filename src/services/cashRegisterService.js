@@ -1,6 +1,7 @@
 import api from './apiClient'
 import db from './db'
 import accountingService from './accountingService'
+import logger from './logger'
 
 const API_PATH = '/cash-registers'
 
@@ -14,7 +15,7 @@ function getNextId() {
 }
 
 async function tryApi(fn) {
-  try { return await fn() } catch (e) { return null }
+  try { return await fn() } catch { return null }
 }
 
 const service = {
@@ -70,7 +71,7 @@ const service = {
       }, userId)
       db.addAudit({action:'cuadre_contable',store:'cashRegisters',detail:`Asiento de cierre creado para ${register.id}`,userId})
     } catch (e) {
-      console.warn('No se pudo crear asiento contable:', e.message)
+      logger.warn('cashRegisterService', 'No se pudo crear asiento contable', e)
     }
     db.addAudit({action:'close',store:'cashRegisters',detail:`Caja cerrada: ${register.id}`,userId})
     return closed

@@ -1,3 +1,5 @@
+import logger from './logger.js'
+
 const DB_PREFIX = 'javaline_'
 
 export const STORES = [
@@ -24,7 +26,7 @@ export function setStore(store, data) {
     localStorage.setItem(`${DB_PREFIX}${store}`, JSON.stringify(data))
   } catch (e) {
     if (e.name === 'QuotaExceededError' || e.code === 22) {
-      console.error(`[db] localStorage lleno al guardar "${store}".`)
+      logger.error('dbStore', `localStorage lleno al guardar "${store}"`, { store })
       window.dispatchEvent(new CustomEvent('javaline:storage-full', { detail: { store } }))
     } else {
       throw e
