@@ -1,4 +1,43 @@
 services:
+
+  db:
+    container_name: javaline-db
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: javaline
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - javaline
+
+  backend:
+    container_name: javaline-backend
+    build:
+      context: ./dotnet-backend
+      dockerfile: Dockerfile
+    environment:
+      ConnectionStrings__Default: "Host=db;Database=javaline;Username=postgres;Password=${POSTGRES_PASSWORD}"
+      AppSettings__JwtSecret: ${JWT_SECRET:?JWT_SECRET must be set}
+      AppSettings__JwtIssuer: javaline.commercial
+      AppSettings__JwtAudience: javaline.commercial
+      AppSettings__JwtExpirationMinutes: "60"
+      AppSettings__CorsOrigins: "http://localhost"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - javaline
+
   frontend:
     container_name: javaline-frontend
     build:
@@ -7,61 +46,13 @@ services:
     ports:
       - "80:80"
     depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - javaline
-
-  backend:
-    container_name: javaline-backend
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql://postgres:javaline_secret@db:5432/javaline
-      SECRET_KEY: ${SECRET_KEY:-super-secret-key-javaline-2026}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-    depends_on:
-      db:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-    restart: unless-stopped
-    volumes:
-      - uploads:/app/uploads
-    networks:
-      - javaline
-
-  db:
-    container_name: javaline-db
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: javaline_secret
-      POSTGRES_DB: javaline
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+      - backend
     restart: unless-stopped
     networks:
       - javaline
 
 volumes:
   pgdata:
-  uploads:
 
 networks:
   javaline:
