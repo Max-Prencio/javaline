@@ -1,15 +1,14 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0-alpine AS build
 WORKDIR /src
 
-COPY Javaline.Commercial.sln ./
 COPY src/Javaline.Commercial.Domain/Javaline.Commercial.Domain.csproj             src/Javaline.Commercial.Domain/
 COPY src/Javaline.Commercial.Application/Javaline.Commercial.Application.csproj   src/Javaline.Commercial.Application/
 COPY src/Javaline.Commercial.Infrastructure/Javaline.Commercial.Infrastructure.csproj src/Javaline.Commercial.Infrastructure/
 COPY src/Javaline.Commercial.Api/Javaline.Commercial.Api.csproj                   src/Javaline.Commercial.Api/
 
-RUN dotnet restore
+RUN dotnet restore src/Javaline.Commercial.Api/Javaline.Commercial.Api.csproj
 
-COPY . .
+COPY src/ src/
 RUN dotnet publish src/Javaline.Commercial.Api/Javaline.Commercial.Api.csproj \
     -c Release -o /app/publish --no-restore
 
