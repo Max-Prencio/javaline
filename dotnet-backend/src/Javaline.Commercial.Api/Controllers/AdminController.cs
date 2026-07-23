@@ -13,10 +13,12 @@ namespace Javaline.Commercial.Api.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly IAdminService _adminService;
+    private readonly IAuthService _authService;
 
-    public AdminController(IAdminService adminService)
+    public AdminController(IAdminService adminService, IAuthService authService)
     {
         _adminService = adminService;
+        _authService  = authService;
     }
 
     // ─── Permissions ───
@@ -191,3 +193,39 @@ public class AdminController : ControllerBase
 }
 
 public record ResolveDuplicateDto(string Action, string Entity, string PrimaryId, string DuplicateId);
+
+// ─── Account Lockout Management ───
+
+[ApiController]
+[Route("admin/accounts")]
+[Authorize(Roles = "admin")]
+public class AccountLockoutController : ControllerBase
+{
+    private readonly IAuthService _authService;
+
+    public AccountLockoutController(IAuthService authService)
+    {
+        _authService = authService;
+    }
+
+    [HttpGet("locked")]
+    public async Task<IActionResult> GetLockedUsers()
+    {
+        var users = await _authService.GetLockedUsersAsync();
+        return Ok(users);
+    }
+
+    [HttpPost("{id}/unlock")]
+    public async Task<IActionResult> UnlockAccount(string id)
+    {
+        await _authService.UnlockAccountAsync(id);
+        return Ok(new { message = "Cuenta desbloqueada exitosamente." });
+    }
+
+    [HttpPost("{id}/send-password-reset")]
+    public async Task<IActionResult> SendPasswordReset(string id)
+    {
+        await _authService.SendPasswordResetEmailAsync(id);
+        return Ok(new { message = "Correo de restablecimiento enviado." });
+    }
+}

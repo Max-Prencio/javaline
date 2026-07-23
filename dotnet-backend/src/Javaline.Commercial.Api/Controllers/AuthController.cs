@@ -106,6 +106,14 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request, CancellationToken ct)
+    {
+        await _authService.ResetPasswordAsync(request, ct);
+        return Ok(new { message = "Contraseña restablecida exitosamente." });
+    }
+
     [Authorize]
     [HttpGet("me")]
     public async Task<IActionResult> GetCurrentUser(CancellationToken ct)

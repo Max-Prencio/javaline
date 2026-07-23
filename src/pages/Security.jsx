@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { FiShield, FiUsers, FiCheck, FiMinus, FiSearch, FiClock, FiKey, FiSmartphone, FiLock, FiAlertTriangle, FiCheckCircle, FiCopy, FiRefreshCw, FiDownload, FiTrash2 } from 'react-icons/fi'
+import { FiShield, FiUsers, FiCheck, FiMinus, FiSearch, FiClock, FiKey, FiSmartphone, FiLock, FiAlertTriangle, FiCheckCircle, FiCopy, FiRefreshCw, FiDownload, FiTrash2, FiUnlock, FiMail } from 'react-icons/fi'
 import { useAuth } from '../contexts/AuthContext'
 import securityService from '../services/securityService'
 import authService from '../services/authService'
@@ -34,6 +34,14 @@ const GROUPS = [
     tabs: [
       { id: 'audit', label: 'Auditoría', icon: FiClock },
       { id: 'privacy', label: 'Privacidad', icon: FiShield },
+    ],
+  },
+  {
+    id: 'lockout',
+    label: 'Cuentas',
+    icon: FiLock,
+    tabs: [
+      { id: 'locked', label: 'Cuentas Bloqueadas', icon: FiLock },
     ],
   },
 ]
@@ -76,6 +84,27 @@ export default function Security() {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [deleteText, setDeleteText] = useState('')
   const [exportLoading, setExportLoading] = useState(false)
+  const [lockedAccounts, setLockedAccounts] = useState([])
+  const [lockoutMsg, setLockoutMsg] = useState({})
+
+  const loadLockedAccounts = () =>
+    fetch('/admin/accounts/locked', { credentials: 'include' })
+      .then(r => r.json()).then(setLockedAccounts).catch(() => {})
+
+  const handleUnlock = async (id) => {
+    setLockoutMsg(m => ({ ...m, [id]: 'Desbloqueando...' }))
+    const res = await fetch(`/admin/accounts/${id}/unlock`, { method: 'POST', credentials: 'include' })
+    const data = await res.json()
+    setLockoutMsg(m => ({ ...m, [id]: data.message || 'Listo' }))
+    loadLockedAccounts()
+  }
+
+  const handleSendReset = async (id) => {
+    setLockoutMsg(m => ({ ...m, [id]: 'Enviando correo...' }))
+    const res = await fetch(`/admin/accounts/${id}/send-password-reset`, { method: 'POST', credentials: 'include' })
+    const data = await res.json()
+    setLockoutMsg(m => ({ ...m, [id]: data.message || 'Enviado' }))
+  }
 
   useEffect(() => {
     securityService.getSecurityAudit(null, 50).then(setAuditLog)
@@ -83,6 +112,7 @@ export default function Security() {
     authService.getUsers().then(setUsers)
     roleService.list().then(setRoles)
     setSessionInfo(user ? { userId: user.id || user.userId, email: user.email, role: user.role } : null)
+    if (user?.role === 'admin') loadLockedAccounts()
   }, [user])
 
   const filteredRoles = roles.filter((r) => (r.name || '').toLowerCase().includes(search.toLowerCase()))
@@ -541,6 +571,62 @@ export default function Security() {
       {tab === '2fa' && render2FA()}
       {tab === 'session' && renderSession()}
       {tab === 'score' && renderScore()}
+
+      {tab === 'locked' && (
+        <motion.div {...fadeUp} transition={{ duration: 0.4, delay: 0.1 }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+              <FiLock size={18} color="#ef4444" />
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>Cuentas Bloqueadas</h3>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                onClick={loadLockedAccounts}>
+                <FiRefreshCw size={12} /> Actualizar
+              </span>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20 }}>
+              Cuentas bloqueadas automáticamente tras 4 intentos fallidos de inicio de sesión.
+            </p>
+
+            {lockedAccounts.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: 14 }}>
+                <FiCheckCircle size={32} style={{ marginBottom: 8, color: 'var(--success)' }} />
+                <p style={{ margin: 0 }}>No hay cuentas bloqueadas</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {lockedAccounts.map(acc => (
+                  <div key={acc.id} style={{ background: 'var(--bg-elevated)', borderRadius: 12, border: '1px solid rgba(239,68,68,0.2)', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>{acc.name}</p>
+                      <p style={{ margin: '2px 0 0 0', fontSize: 12, color: 'var(--text-muted)' }}>{acc.email} · {acc.role}</p>
+                      <p style={{ margin: '4px 0 0 0', fontSize: 11, color: '#ef4444' }}>
+                        {acc.failedLoginAttempts} intentos fallidos ·{' '}
+                        {acc.lockedAt ? new Date(acc.lockedAt).toLocaleString('es-DO') : '—'}
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                        onClick={() => handleUnlock(acc.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'var(--accent)', border: 'none', borderRadius: 8, color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                        <FiUnlock size={13} /> Desbloquear
+                      </motion.button>
+                      <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                        onClick={() => handleSendReset(acc.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                        <FiMail size={13} /> Enviar reset
+                      </motion.button>
+                      {lockoutMsg[acc.id] && (
+                        <span style={{ fontSize: 12, color: 'var(--accent)', fontStyle: 'italic' }}>{lockoutMsg[acc.id]}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+
       {tab === 'privacy' && (
         <motion.div {...fadeUp} transition={{ duration: 0.4, delay: 0.1 }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* Export */}

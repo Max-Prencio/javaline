@@ -15,6 +15,10 @@ public interface IAuthService
     Task<List<InvitedUserDto>> GetInvitationsAsync();
     Task<AuthResponse> AcceptInvitationAsync(AcceptInvitationRequest request);
     Task<InviteResponse> ResendInvitationAsync(string userId);
+    Task<List<LockedUserDto>> GetLockedUsersAsync();
+    Task UnlockAccountAsync(string userId);
+    Task SendPasswordResetEmailAsync(string userId);
+    Task ResetPasswordAsync(ResetPasswordRequest request, CancellationToken ct);
 }
 
 public class LoginRequest
@@ -91,4 +95,20 @@ public class AcceptInvitationRequest
     public string Token { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
+}
+
+public class LockedUserDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Role { get; set; } = string.Empty;
+    public int FailedLoginAttempts { get; set; }
+    public DateTime? LockedAt { get; set; }
+}
+
+public class ResetPasswordRequest
+{
+    public string Token { get; set; } = string.Empty;
+    public string NewPassword { get; set; } = string.Empty;
 }

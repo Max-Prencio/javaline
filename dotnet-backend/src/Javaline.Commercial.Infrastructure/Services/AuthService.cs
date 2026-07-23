@@ -28,14 +28,55 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == request.Email, ct)
-            ?? throw new ApplicationException("Invalid email or password.");
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == request.Email, ct);
 
-        if (!VerifyPassword(request.Password, user.PasswordHash))
+        // Always run VerifyPassword even on null to prevent timing attacks
+        var passwordOk = user != null && VerifyPassword(request.Password, user.PasswordHash);
+
+        if (user == null || !passwordOk)
+        {
+            if (user != null)
+            {
+                user.FailedLoginAttempts++;
+
+                if (user.FailedLoginAttempts >= 4 && user.Status == "active")
+                {
+                    user.Status = "locked";
+                    user.LockedAt = DateTime.UtcNow;
+
+                    var lockedName  = user.Name;
+                    var lockedEmail = user.Email;
+                    await _queue.QueueAsync(async (sp, innerCt) =>
+                    {
+                        var db2 = sp.GetRequiredService<JavalineDbContext>();
+                        var adminEmails = await db2.Users
+                            .Where(u => u.Role == "admin" && u.Status == "active")
+                            .Select(u => u.Email)
+                            .ToListAsync(innerCt);
+                        var emailSvc = sp.GetRequiredService<IEmailService>();
+                        foreach (var adminEmail in adminEmails)
+                            await emailSvc.SendAccountLockedAdminAsync(adminEmail, lockedName, lockedEmail, innerCt);
+                    });
+                }
+
+                await _db.SaveChangesAsync(ct);
+            }
+
             throw new ApplicationException("Invalid email or password.");
+        }
+
+        if (user.Status == "locked")
+            throw new ApplicationException("Tu cuenta ha sido bloqueada por múltiples intentos fallidos. Contacta al administrador.");
 
         if (user.Status != "active")
             throw new ApplicationException("Account is not active.");
+
+        // Reset counter on successful login
+        if (user.FailedLoginAttempts > 0)
+        {
+            user.FailedLoginAttempts = 0;
+            await _db.SaveChangesAsync(ct);
+        }
 
         var token = GenerateJwtToken(user);
         var refreshToken = await CreateRefreshTokenAsync(user.Id);
@@ -254,6 +295,78 @@ public class AuthService : IAuthService
             UserId = user.Id,
             Token = user.InvitationToken ?? ""
         };
+    }
+
+    public async Task<List<LockedUserDto>> GetLockedUsersAsync()
+    {
+        var users = await _db.Users
+            .Where(u => u.Status == "locked")
+            .OrderByDescending(u => u.LockedAt)
+            .ToListAsync();
+
+        return users.Select(u => new LockedUserDto
+        {
+            Id = u.Id,
+            Name = u.Name,
+            Email = u.Email,
+            Role = u.Role,
+            FailedLoginAttempts = u.FailedLoginAttempts,
+            LockedAt = u.LockedAt
+        }).ToList();
+    }
+
+    public async Task UnlockAccountAsync(string userId)
+    {
+        var user = await _db.Users.FindAsync(userId)
+            ?? throw new KeyNotFoundException("Usuario no encontrado");
+
+        user.Status = "active";
+        user.LockedAt = null;
+        user.FailedLoginAttempts = 0;
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task SendPasswordResetEmailAsync(string userId)
+    {
+        var user = await _db.Users.FindAsync(userId)
+            ?? throw new KeyNotFoundException("Usuario no encontrado");
+
+        var token = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
+        user.PasswordResetToken = token;
+        user.PasswordResetExpires = DateTime.UtcNow.AddHours(24);
+        await _db.SaveChangesAsync();
+
+        var baseUrl = _config["AppSettings:BaseUrl"] ?? "http://localhost:5173";
+        var resetUrl = $"{baseUrl}/reset-password?token={Uri.EscapeDataString(token)}";
+        var email = user.Email;
+
+        await _queue.QueueAsync(async (sp, ct) =>
+        {
+            var emailSvc = sp.GetRequiredService<IEmailService>();
+            await emailSvc.SendPasswordResetAsync(email, resetUrl, ct);
+        });
+    }
+
+    public async Task ResetPasswordAsync(ResetPasswordRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(request.Token) || string.IsNullOrEmpty(request.NewPassword))
+            throw new ApplicationException("Token y contraseña son requeridos");
+        if (request.NewPassword.Length < 8)
+            throw new ApplicationException("La contraseña debe tener al menos 8 caracteres");
+
+        var user = await _db.Users.FirstOrDefaultAsync(u =>
+            u.PasswordResetToken == request.Token &&
+            u.PasswordResetExpires > DateTime.UtcNow, ct)
+            ?? throw new ApplicationException("El enlace de restablecimiento es inválido o ha expirado");
+
+        user.PasswordHash = HashPassword(request.NewPassword);
+        user.PasswordResetToken = null;
+        user.PasswordResetExpires = null;
+        user.FailedLoginAttempts = 0;
+        if (user.Status == "locked") user.Status = "active";
+        await _db.SaveChangesAsync(ct);
+
+        await RevokeAllUserRefreshTokensAsync(user.Id);
     }
 
     private string GenerateJwtToken(User user)

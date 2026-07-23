@@ -51,4 +51,16 @@ public class User : BaseEntity
 
     [Column("invitation_token")]
     public string? InvitationToken { get; set; }
+
+    [Column("failed_login_attempts")]
+    public int FailedLoginAttempts { get; set; }
+
+    [Column("locked_at")]
+    public DateTime? LockedAt { get; set; }
+
+    [Column("password_reset_token")]
+    public string? PasswordResetToken { get; set; }
+
+    [Column("password_reset_expires")]
+    public DateTime? PasswordResetExpires { get; set; }
 }

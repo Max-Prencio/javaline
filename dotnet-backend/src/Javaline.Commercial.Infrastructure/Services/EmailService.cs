@@ -69,4 +69,35 @@ public sealed class EmailService : IEmailService
             <p>Se ha creado la factura <strong>{invoiceId}</strong> por un monto de <strong>${total:N2}</strong>.</p>
             <p>Ingresa a Javaline para verla en detalle.</p>
             """, ct);
+
+    public Task SendAccountLockedAdminAsync(string adminEmail, string lockedUserName, string lockedUserEmail, CancellationToken ct = default)
+        => SendAsync(adminEmail, "⚠️ Cuenta bloqueada — Javaline", $"""
+            <h2 style="color:#dc2626;">Cuenta bloqueada por intentos fallidos</h2>
+            <p>La cuenta del usuario <strong>{lockedUserName}</strong> (<code>{lockedUserEmail}</code>)
+            ha sido bloqueada automáticamente después de 4 intentos de inicio de sesión fallidos.</p>
+            <p>Accede al módulo de <strong>Seguridad → Cuentas Bloqueadas</strong> para desbloquearla
+            y enviar un correo de restablecimiento de contraseña.</p>
+            <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;" />
+            <p style="color:#6b7280;font-size:12px;">Este es un correo automático de Javaline. No respondas a este mensaje.</p>
+            """, ct);
+
+    public Task SendPasswordResetAsync(string to, string resetUrl, CancellationToken ct = default)
+        => SendAsync(to, "Restablece tu contraseña — Javaline", $"""
+            <h2>Restablecimiento de contraseña</h2>
+            <p>Un administrador ha iniciado un restablecimiento de contraseña para tu cuenta.</p>
+            <p>Haz clic en el siguiente botón para establecer una nueva contraseña.
+            El enlace es válido por <strong>24 horas</strong>.</p>
+            <p style="margin:24px 0;">
+              <a href="{resetUrl}"
+                 style="padding:12px 24px;background:#f59e0b;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">
+                Restablecer contraseña
+              </a>
+            </p>
+            <p style="color:#6b7280;font-size:12px;">
+              Si no solicitaste este cambio, ignora este correo.
+              Tu contraseña no cambiará hasta que hagas clic en el enlace.
+            </p>
+            <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;" />
+            <p style="color:#6b7280;font-size:12px;">Este es un correo automático de Javaline.</p>
+            """, ct);
 }
