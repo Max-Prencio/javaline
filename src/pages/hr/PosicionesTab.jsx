@@ -98,7 +98,7 @@ function PosicionesTab() {
                 <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" onChange={e => handleDescrUpload(p.id, e)} style={{ display: 'none' }} disabled={uploading} />
               </label>
               {p.description_file && (
-                <a href={`/uploads/ats/${p.description_file}`} target="_blank" rel="noopener noreferrer"
+                <a href={`/hr/files/${p.description_file}`} target="_blank" rel="noopener noreferrer"
                   style={{ fontSize: 11, color: 'var(--accent)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}>
                   <FiPaperclip size={10} />{fileLabel(p.description_file)}
                 </a>

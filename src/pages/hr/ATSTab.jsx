@@ -148,13 +148,13 @@ function ATSTab() {
               {(c.resume_file || c.position_descr_file) && (
                 <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                   {c.resume_file && (
-                    <a href={`/uploads/ats/${c.resume_file}`} target="_blank" rel="noopener noreferrer"
+                    <a href={`/hr/files/${c.resume_file}`} target="_blank" rel="noopener noreferrer"
                       style={{ fontSize: 11, color: 'var(--accent)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}>
                       <FiPaperclip size={10} />{fileLabel(c.resume_file)}
                     </a>
                   )}
                   {c.position_descr_file && (
-                    <a href={`/uploads/ats/${c.position_descr_file}`} target="_blank" rel="noopener noreferrer"
+                    <a href={`/hr/files/${c.position_descr_file}`} target="_blank" rel="noopener noreferrer"
                       style={{ fontSize: 11, color: 'var(--accent)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}>
                       <FiFileText size={10} />{fileLabel(c.position_descr_file)}
                     </a>
