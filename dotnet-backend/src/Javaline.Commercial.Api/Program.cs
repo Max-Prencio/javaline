@@ -56,14 +56,18 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 builder.Host.UseSerilog();
 
+// ─── RLS Interceptor ───
+builder.Services.AddScoped<TenantConnectionInterceptor>();
+
 // ─── Database ───
-builder.Services.AddDbContext<JavalineDbContext>(o =>
+builder.Services.AddDbContext<JavalineDbContext>((sp, o) =>
 {
     o.UseNpgsql(connStr, npgsql =>
     {
         npgsql.MigrationsAssembly("Javaline.Commercial.Infrastructure");
         npgsql.EnableRetryOnFailure(3, TimeSpan.FromSeconds(5), null);
     });
+    o.AddInterceptors(sp.GetRequiredService<TenantConnectionInterceptor>());
     if (builder.Environment.IsDevelopment())
         o.EnableSensitiveDataLogging();
 });
