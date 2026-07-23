@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FiAlertTriangle, FiCheck, FiTrash2, FiRefreshCw, FiSearch, FiUsers, FiPackage, FiMail } from 'react-icons/fi'
+import { FiCheck, FiTrash2, FiRefreshCw, FiSearch, FiUsers, FiPackage, FiMail } from 'react-icons/fi'
 import api from '../services/apiClient'
 
 const ENTITY_LABELS = { contacts: 'Contactos', inventory: 'Productos', users: 'Usuarios' }
@@ -102,7 +102,7 @@ export default function DuplicateDetection() {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {groups.map((g, i) => {
+        {groups.map((g) => {
           const best = g.matches.reduce((a, b) => a.similarity > b.similarity ? a : b)
           return (
             <div key={`${g.id_a}-${g.id_b}`} style={{ background: '#1a1a23', borderRadius: 12, padding: 16, border: '1px solid rgba(255,255,255,0.06)' }}>

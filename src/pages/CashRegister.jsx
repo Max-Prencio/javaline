@@ -1,20 +1,20 @@
 import { useState, useEffect, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { FiDollarSign, FiPlus, FiX, FiPrinter, FiClock, FiCalendar, FiTrendingUp, FiTrendingDown } from 'react-icons/fi'
+import { motion } from 'framer-motion'
+import { FiDollarSign, FiPlus, FiX, FiPrinter, FiTrendingUp, FiTrendingDown } from 'react-icons/fi'
 import cashRegisterService from '../services/cashRegisterService'
-import db from '../services/db'
+import { useAuth } from '../contexts/AuthContext'
 import { printHtml } from '../utils/print'
 
-function formatMoney(n) { return (n || 0).toLocaleString('es-DO', {minimumFractionDigits:2}) }
+import { formatMoney } from '../utils/format'
 
 export default function CashRegister() {
   const [register, setRegister] = useState(null)
   const [history, setHistory] = useState([])
   const [initialAmount, setInitialAmount] = useState('')
   const [loading, setLoading] = useState(false)
-  const [reportModal, setReportModal] = useState(null)
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
+  const { user } = useAuth()
+  const userId = user?.userId || user?.id
 
   const load = useCallback(async () => {
     setRegister(await cashRegisterService.getOpen(userId))

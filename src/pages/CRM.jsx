@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiUsers, FiPlus, FiX, FiMail, FiPhone, FiUser, FiSearch } from 'react-icons/fi'
 import { contactService } from '../services/entityService'
+import { useAuth } from '../contexts/AuthContext'
 
 const STAGES = [
   { key: 'lead', label: 'Leads', borderColor: 'var(--accent)' },
@@ -23,16 +24,23 @@ const containerVariants = {
 }
 
 export default function CRM() {
+  const [loading, setLoading] = useState(false)
   const [contacts, setContacts] = useState([])
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [form, setForm] = useState({ name: '', company: '', email: '', phone: '', stage: 'lead' })
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
+  const { user } = useAuth()
+  const userId = user?.userId || user?.id
 
   const load = useCallback(async () => {
-    const data = await contactService.list()
-    setContacts(data)
+    setLoading(true)
+    try {
+      const data = await contactService.list()
+      setContacts(data)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -54,6 +62,8 @@ export default function CRM() {
       (c.company && c.company.toLowerCase().includes(searchQuery.toLowerCase())) ||
       c.email.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  if (loading) return (<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}><div className="spinner" /></div>)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>

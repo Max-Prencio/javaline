@@ -1,8 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
-import authService from '../services/authService'
 import api from '../services/apiClient'
+import authService from '../services/authService'
 import notificationService from '../services/notificationService'
-import securityService from '../services/securityService'
 
 const AuthContext = createContext()
 
@@ -12,55 +11,50 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState('')
   const [unreadNotifs, setUnreadNotifs] = useState(0)
   const [sessionExpiresAt, setSessionExpiresAt] = useState(null)
-  const [deviceWarning, setDeviceWarning] = useState(false)
   const sessionCheckRef = useRef(null)
 
-  // Restore session on mount
+  // Restore session on mount via httpOnly cookie + /auth/me endpoint
   useEffect(() => {
-    const session = securityService.getSession()
-    if (session) {
-      // Device fingerprint check — warn if login came from a different device
-      const currentFingerprint = securityService.getFingerprint()
-      if (session.fingerprint && session.fingerprint !== currentFingerprint) {
-        setDeviceWarning(true)
+    let mounted = true
+    async function restore() {
+      try {
+        const userData = await api.get('/auth/me')
+        if (mounted && userData) {
+          const u = normalizeUser(userData)
+          setUser(u)
+          setSessionExpiresAt(Date.now() + 30 * 60 * 1000)
+          notificationService.getUnreadCount(u.id || u.userId).then(setUnreadNotifs).catch(() => {})
+        }
+      } catch {
+        // No valid session cookie — user stays null
+      } finally {
+        if (mounted) setLoading(false)
       }
-      setUser(session)
-      setSessionExpiresAt(new Date(session.expiresAt).getTime())
-      notificationService.getUnreadCount(session.userId).then(setUnreadNotifs).catch(() => {})
     }
-    setLoading(false)
+    restore()
+    return () => { mounted = false }
   }, [])
 
-  // Track user activity to refresh session
+  // Refresh session expiry on user activity
   useEffect(() => {
     if (!user) return
-
-    const handleActivity = () => {
-      securityService.refreshSession()
-      setSessionExpiresAt(Date.now() + 30 * 60 * 1000)
-    }
-
+    const handleActivity = () => setSessionExpiresAt(Date.now() + 30 * 60 * 1000)
     const events = ['mousedown', 'keydown', 'touchstart', 'scroll']
     events.forEach(e => window.addEventListener(e, handleActivity))
-
     return () => events.forEach(e => window.removeEventListener(e, handleActivity))
   }, [user])
 
   // Check session expiry periodically
   useEffect(() => {
     if (!user) return
-
     sessionCheckRef.current = setInterval(() => {
-      if (securityService.isSessionExpired()) {
+      if (sessionExpiresAt && Date.now() > sessionExpiresAt) {
         setUser(null)
         setError('Sesión expirada. Inicia sesión nuevamente.')
       }
     }, 10000)
-
-    return () => {
-      if (sessionCheckRef.current) clearInterval(sessionCheckRef.current)
-    }
-  }, [user])
+    return () => { if (sessionCheckRef.current) clearInterval(sessionCheckRef.current) }
+  }, [user, sessionExpiresAt])
 
   // Normalize user object so both user.id and user.userId are always set
   function normalizeUser(raw) {
@@ -72,7 +66,6 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     try {
       const result = await authService.login(email, password)
-      // 2FA required — don't set user yet
       if (result?.twoFactorRequired) return result
       setError('')
       const u = normalizeUser(result)
@@ -120,7 +113,6 @@ export function AuthProvider({ children }) {
       const u = normalizeUser(result)
       setUser(u)
       setError('')
-      securityService.createSession(u)
       setSessionExpiresAt(Date.now() + 30 * 60 * 1000)
       return true
     } catch (e) {
@@ -134,7 +126,6 @@ export function AuthProvider({ children }) {
       const { default: profileService } = await import('../services/profileService')
       const updated = await profileService.updateProfile(user.userId || user.id, data)
       setUser({ ...user, ...updated })
-      securityService.refreshSession()
       setError('')
       return true
     } catch (e) {
@@ -156,9 +147,8 @@ export function AuthProvider({ children }) {
     }
   }, [user])
 
-  const logout = useCallback(() => {
-    api.clearToken()
-    securityService.destroySession()
+  const logout = useCallback(async () => {
+    await authService.logout()
     setUser(null)
     setError('')
     setSessionExpiresAt(null)
@@ -175,7 +165,7 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       user, login, register, logout, updateProfile, updatePhoto,
       acceptInvitation, error, setError, loading, unreadNotifs, refreshNotifs,
-      verifyTwoFactor, sessionExpiresAt, deviceWarning, dismissDeviceWarning: () => setDeviceWarning(false),
+      verifyTwoFactor, sessionExpiresAt,
     }}>
       {children}
     </AuthContext.Provider>

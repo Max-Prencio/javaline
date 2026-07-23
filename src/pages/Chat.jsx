@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { motion } from 'framer-motion'
-import { FiSearch, FiSend, FiUser, FiCheck, FiCircle } from 'react-icons/fi'
+import { FiSearch, FiSend, FiUser } from 'react-icons/fi'
 import { chatService } from '../services/entityService'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function Chat() {
   const [chats, setChats] = useState([])
@@ -9,13 +9,14 @@ export default function Chat() {
   const [message, setMessage] = useState('')
   const [search, setSearch] = useState('')
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
+  const { user } = useAuth()
+  const userId = user?.userId || user?.id
 
   const load = useCallback(async () => {
     const data = await chatService.getConversations()
     setChats(data)
     if (!activeChat && data.length) setActiveChat(data[0])
-  }, [])
+  }, [activeChat])
 
   useEffect(() => { load() }, [load])
 

@@ -42,7 +42,7 @@ const pocketService = {
 
   connectWs(tenantId, userId, onMessage) {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const wsUrl = `${protocol}://localhost:8000/pocket/ws/${tenantId}/${userId}`
+    const wsUrl = `${protocol}://localhost:7001/pocket/ws/${tenantId}/${userId}`
     const ws = new WebSocket(wsUrl)
     ws.onmessage = (event) => {
       try {

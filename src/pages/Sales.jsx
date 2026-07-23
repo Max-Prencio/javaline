@@ -44,8 +44,16 @@ const StockBadge = ({ stock }) => {
 export default function Sales() {
   const [products, setProducts] = useState([])
   const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const load = useCallback(async () => { setProducts(await productService.list()) }, [])
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      setProducts(await productService.list())
+    } finally {
+      setLoading(false)
+    }
+  }, [])
   useEffect(() => { load() }, [load])
 
   const filtered = products.filter((p) =>
@@ -63,6 +71,8 @@ export default function Sales() {
     { label: 'Ingresos Totales', value: formatCurrency(ingresos), icon: FiDollarSign },
     { label: 'Stock Bajo', value: stockBajo, icon: FiBarChart2 },
   ]
+
+  if (loading) return (<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}><div className="spinner" /></div>)
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="p-6 space-y-6">

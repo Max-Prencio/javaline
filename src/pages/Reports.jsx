@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { FiTrendingUp, FiDollarSign, FiFileText, FiUsers, FiShoppingBag, FiSettings } from 'react-icons/fi'
+import { FiTrendingUp, FiDollarSign, FiFileText, FiUsers, FiSettings } from 'react-icons/fi'
 import { invoiceService, contactService, productService } from '../services/entityService'
 
 function KpiCard({ icon: Icon, label, value, sub }) {
@@ -34,11 +34,17 @@ export default function Reports() {
   const [invoices, setInvoices] = useState([])
   const [contacts, setContacts] = useState([])
   const [products, setProducts] = useState([])
+  const [loading, setLoading] = useState(false)
 
   const load = useCallback(async () => {
-    setInvoices(await invoiceService.list())
-    setContacts(await contactService.list())
-    setProducts(await productService.list())
+    setLoading(true)
+    try {
+      setInvoices(await invoiceService.list())
+      setContacts(await contactService.list())
+      setProducts(await productService.list())
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -48,6 +54,8 @@ export default function Reports() {
   const totalFacturas = MONTHLY_REVENUE.reduce((s, r) => s + r.facturas, 0)
   const ganancia = totalIngresos - totalGastos
   const maxVal = Math.max(...MONTHLY_REVENUE.map(r => r.ingresos))
+
+  if (loading) return (<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}><div className="spinner" /></div>)
 
   return (
     <div className="space-y-6">

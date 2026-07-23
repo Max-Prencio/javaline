@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiCamera, FiCheck, FiX, FiPackage, FiSearch, FiPlus, FiMinus, FiTrash2, FiArrowLeft, FiAlertTriangle } from 'react-icons/fi'
+import { FiCamera, FiCheck, FiX, FiPackage, FiPlus, FiMinus, FiAlertTriangle, FiArrowLeft } from 'react-icons/fi'
 import pocketService from '../services/pocketService'
 import { BrowserMultiFormatReader } from '@zxing/library'
 
@@ -155,7 +155,7 @@ export default function InventoryCount() {
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {scannedList.map((item, i) => (
+              {scannedList.map((item) => (
                 <motion.div key={item.sku} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
                   style={{ background: '#1a1a23', borderRadius: 10, padding: '12px 14px', border: '1px solid rgba(255,255,255,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
@@ -214,7 +214,7 @@ export default function InventoryCount() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
-              {scannedList.map((item, i) => (
+              {scannedList.map((item) => (
                 <motion.div key={item.sku} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                   style={{ background: '#1a1a23', borderRadius: 10, padding: '12px 14px', border: '1px solid rgba(255,255,255,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>

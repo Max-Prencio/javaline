@@ -5,9 +5,38 @@ import { useAuth } from '../contexts/AuthContext'
 import securityService from '../services/securityService'
 import authService from '../services/authService'
 import { roleService } from '../services/entityService'
-import db from '../services/db'
 
 const MODULES = ['Dashboard', 'Facturación', 'CRM', 'RRHH', 'Compras', 'Agenda', 'Reuniones', 'Ventas', 'Tareas']
+
+const GROUPS = [
+  {
+    id: 'access',
+    label: 'Acceso',
+    icon: FiUsers,
+    tabs: [
+      { id: 'roles', label: 'Roles y Permisos', icon: FiUsers },
+    ],
+  },
+  {
+    id: 'auth',
+    label: 'Autenticación',
+    icon: FiKey,
+    tabs: [
+      { id: '2fa', label: '2FA', icon: FiSmartphone },
+      { id: 'session', label: 'Sesión', icon: FiKey },
+      { id: 'score', label: 'Score de Seguridad', icon: FiShield },
+    ],
+  },
+  {
+    id: 'audit',
+    label: 'Auditoría',
+    icon: FiClock,
+    tabs: [
+      { id: 'audit', label: 'Auditoría', icon: FiClock },
+      { id: 'privacy', label: 'Privacidad', icon: FiShield },
+    ],
+  },
+]
 
 const ACCESS_MATRIX = {
   Administrador: MODULES.reduce((acc, m) => ({ ...acc, [m]: true }), {}),
@@ -29,6 +58,7 @@ export default function Security() {
   const { user } = useAuth()
   const [hoveredCell, setHoveredCell] = useState(null)
   const [search, setSearch] = useState('')
+  const [group, setGroup] = useState('access')
   const [tab, setTab] = useState('roles')
   const [auditLog, setAuditLog] = useState([])
   const [securityScore, setSecurityScore] = useState(null)
@@ -52,8 +82,8 @@ export default function Security() {
     setSecurityScore(securityService.getSecurityScore())
     authService.getUsers().then(setUsers)
     roleService.list().then(setRoles)
-    setSessionInfo(securityService.getSession())
-  }, [])
+    setSessionInfo(user ? { userId: user.id || user.userId, email: user.email, role: user.role } : null)
+  }, [user])
 
   const filteredRoles = roles.filter((r) => (r.name || '').toLowerCase().includes(search.toLowerCase()))
 
@@ -85,11 +115,8 @@ export default function Security() {
     setExportLoading(true)
     try {
       const userId = user?.id || user?.userId
-      const data = {}
-      db.STORES.forEach(store => { data[store] = db.getAll(store) })
-      // Remove passwords from export
-      if (data.users) data.users = data.users.map(({ password: _pw, ...u }) => u)
-      const json = JSON.stringify({ exportedAt: new Date().toISOString(), version: 1, data }, null, 2)
+      const result = await authService.exportUserData(userId)
+      const json = JSON.stringify(result, null, 2)
       const blob = new Blob([json], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -97,24 +124,15 @@ export default function Security() {
       a.download = `javaline-backup-${new Date().toISOString().slice(0, 10)}.json`
       a.click()
       URL.revokeObjectURL(url)
-      db.addAudit({ action: 'data_export', store: 'system', detail: 'Exportación de datos realizada', userId })
     } finally {
       setExportLoading(false)
     }
   }
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = async () => {
     if (deleteText !== 'ELIMINAR') return
     const userId = user?.id || user?.userId
-    db.addAudit({ action: 'account_deleted', store: 'system', detail: `Cuenta eliminada: ${user?.email}`, userId })
-    // Remove user-specific data
-    db.STORES.forEach(store => {
-      if (store === 'users') {
-        const users = db.getAll('users').filter(u => u.id !== userId)
-        localStorage.setItem('javaline_users', JSON.stringify(users))
-      }
-    })
-    securityService.destroySession()
+    await authService.deleteAccount(userId, user?.email)
     window.location.href = '/login'
   }
 
@@ -126,14 +144,7 @@ export default function Security() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const TABS = [
-    { id: 'roles', label: 'Roles y Permisos', icon: FiUsers },
-    { id: 'audit', label: 'Auditoría', icon: FiClock },
-    { id: '2fa', label: '2FA', icon: FiSmartphone },
-    { id: 'session', label: 'Sesión', icon: FiKey },
-    { id: 'score', label: 'Score de Seguridad', icon: FiShield },
-    { id: 'privacy', label: 'Privacidad', icon: FiShield },
-  ]
+  const currentGroup = GROUPS.find(g => g.id === group)
 
   const renderScore = () => {
     if (!securityScore) return null
@@ -376,20 +387,54 @@ export default function Security() {
         </div>
       </motion.div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', borderBottom: '1px solid var(--border-light)', paddingBottom: 0 }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', cursor: 'pointer',
-              border: 'none', borderBottom: tab === t.id ? '2px solid var(--accent)' : '2px solid transparent',
-              background: 'transparent', color: tab === t.id ? 'var(--accent)' : 'var(--text-muted)',
-              fontSize: 13, fontWeight: tab === t.id ? 600 : 400, transition: 'all 0.2s',
-            }}>
-            <t.icon size={15} />
-            {t.label}
-          </button>
-        ))}
+      {/* Level 1 — Group bar */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 8 }}>
+        {GROUPS.map(g => {
+          const Icon = g.icon
+          const active = group === g.id
+          return (
+            <button key={g.id} onClick={() => { setGroup(g.id); setTab(g.tabs[0].id) }}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 8, padding: '18px 12px',
+                background: active ? 'var(--accent-gradient)' : 'var(--bg-card)',
+                border: active ? 'none' : '1px solid var(--border)',
+                borderRadius: 14,
+                color: active ? '#fff' : 'var(--text-muted)',
+                cursor: 'pointer',
+                fontWeight: 600, fontSize: 12,
+                transition: 'all 0.2s',
+                boxShadow: active ? '0 4px 14px rgba(0,0,0,0.25)' : 'none',
+              }}>
+              <Icon size={22} />
+              {g.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Level 2 — Module tabs for active group */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '12px 0', marginBottom: 24, borderBottom: '1px solid var(--border)' }}>
+        {currentGroup.tabs.map(t => {
+          const Icon = t.icon
+          const active = tab === t.id
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '8px 16px',
+                background: active ? 'rgba(var(--accent-rgb, 234,88,12), 0.12)' : 'var(--bg-elevated)',
+                border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+                borderRadius: 8,
+                color: active ? 'var(--accent)' : 'var(--text-muted)',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}>
+              <Icon size={13} />
+              {t.label}
+            </button>
+          )
+        })}
       </div>
 
       {tab === 'roles' && (

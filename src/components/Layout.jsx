@@ -6,8 +6,8 @@ import {
   FiGrid, FiFileText, FiUsers, FiUserCheck, FiShoppingCart,
   FiCalendar, FiVideo, FiTrendingUp, FiCheckSquare, FiShield,
   FiLogOut, FiMenu, FiChevronLeft, FiBell, FiSearch,
-  FiSun, FiMoon, FiUser, FiMessageCircle, FiBarChart2,
-  FiDollarSign, FiBook, FiPackage, FiZap, FiCopy
+  FiSun, FiMoon, FiMessageCircle, FiBarChart2,
+  FiDollarSign, FiBook, FiPackage, FiZap
 } from 'react-icons/fi'
 
 const SECTIONS = [
@@ -65,7 +65,7 @@ export default function Layout({ children }) {
     refreshNotifs?.()
     const interval = setInterval(() => refreshNotifs?.(), 30000)
     return () => clearInterval(interval)
-  }, [])
+  }, [refreshNotifs])
 
   const handleLogout = () => {
     logout()

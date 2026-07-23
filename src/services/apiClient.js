@@ -1,20 +1,7 @@
-// VITE_API_URL must be set in Vercel environment variables to point at the deployed backend.
-// Example: https://javaline-api.railway.app
-// When not set (local dev), defaults to '' so requests go to the same origin (vite proxy or local uvicorn).
 const API_BASE = import.meta.env.VITE_API_URL || ''
-
-function getToken() {
-  try {
-    return localStorage.getItem('javaline_token') || null
-  } catch {
-    return null
-  }
-}
 
 async function request(method, path, body = null, opts = {}) {
   const headers = {}
-  const token = getToken()
-  if (token) headers['Authorization'] = `Bearer ${token}`
   const isFormData = body instanceof FormData
   if (!isFormData) {
     headers['Content-Type'] = 'application/json'
@@ -24,6 +11,7 @@ async function request(method, path, body = null, opts = {}) {
     method,
     headers: { ...headers, ...opts.headers },
     body: isFormData ? body : (body ? JSON.stringify(body) : null),
+    credentials: 'include',
   })
 
   if (!res.ok) {
@@ -45,8 +33,7 @@ const api = {
   post: (path, body, opts) => request('POST', path, body, opts),
   put: (path, body) => request('PUT', path, body),
   delete: (path) => request('DELETE', path),
-  setToken: (token) => localStorage.setItem('javaline_token', token),
-  clearToken: () => localStorage.removeItem('javaline_token'),
+  clearToken: () => {},
 }
 
 export default api

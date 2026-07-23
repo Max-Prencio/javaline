@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiVideo, FiPlus, FiX, FiClock, FiUsers, FiMapPin, FiCalendar } from 'react-icons/fi'
 import { meetingService } from '../services/entityService'
+import { useAuth } from '../contexts/AuthContext'
 
 const today = new Date().toISOString().slice(0, 10)
 
@@ -19,12 +20,19 @@ export default function Meetings() {
   const [meetings, setMeetings] = useState([])
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ title: '', date: '', time: '', attendees: '', room: '' })
+  const [loading, setLoading] = useState(false)
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
+  const { user } = useAuth()
+  const userId = user?.userId || user?.id
 
   const load = useCallback(async () => {
-    const data = await meetingService.list()
-    setMeetings(data)
+    setLoading(true)
+    try {
+      const data = await meetingService.list()
+      setMeetings(data)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -39,6 +47,8 @@ export default function Meetings() {
     setForm({ title: '', date: '', time: '', attendees: '', room: '' })
     load()
   }
+
+  if (loading) return (<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}><div className="spinner" /></div>)
 
   return (
     <motion.div

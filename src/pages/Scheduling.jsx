@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FiCalendar, FiPlus, FiX, FiClock, FiUsers, FiMapPin } from 'react-icons/fi'
 import { meetingService } from '../services/entityService'
+import { useAuth } from '../contexts/AuthContext'
 
 const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
@@ -24,12 +25,19 @@ export default function Scheduling() {
   const [meetings, setMeetings] = useState([])
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ title: '', date: '', time: '', attendees: '', room: '' })
+  const [loading, setLoading] = useState(false)
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
+  const { user } = useAuth()
+  const userId = user?.userId || user?.id
 
   const load = useCallback(async () => {
-    const data = await meetingService.list()
-    setMeetings(data)
+    setLoading(true)
+    try {
+      const data = await meetingService.list()
+      setMeetings(data)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -44,6 +52,8 @@ export default function Scheduling() {
     setForm({ title: '', date: '', time: '', attendees: '', room: '' })
     load()
   }
+
+  if (loading) return (<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}><div className="spinner" /></div>)
 
   return (
     <div className="space-y-6">

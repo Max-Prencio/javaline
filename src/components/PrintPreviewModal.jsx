@@ -6,7 +6,7 @@ import paperSizeService from '../services/paperSizeService'
 const BACKDROP = { hidden: { opacity: 0 }, visible: { opacity: 1 }, exit: { opacity: 0 } }
 const MODAL = { hidden: { opacity: 0, scale: 0.95, y: 20 }, visible: { opacity: 1, scale: 1, y: 0 }, exit: { opacity: 0, scale: 0.95, y: 20 } }
 
-export default function PrintPreviewModal({ show, onClose, html, title, reportType }) {
+export default function PrintPreviewModal({ show, onClose, html, reportType }) {
   const [paperSizes, setPaperSizes] = useState([])
   const [selectedPaper, setSelectedPaper] = useState(null)
   const [orientation, setOrientation] = useState('portrait')

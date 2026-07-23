@@ -5,7 +5,7 @@ import authService from './authService'
 function delay(ms = 200) { return new Promise(r => setTimeout(r, ms)) }
 
 async function tryApi(fn) {
-  try { return await fn() } catch (e) { return null }
+  try { return await fn() } catch { return null }
 }
 
 const profileService = {

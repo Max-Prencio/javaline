@@ -12,15 +12,15 @@ const service = {
     return api.get(`/approval-hierarchies/${id}`)
   },
 
-  async createHierarchy(data, userId) {
+  async createHierarchy(data) {
     return api.post('/approval-hierarchies', data)
   },
 
-  async updateHierarchy(id, changes, userId) {
+  async updateHierarchy(id, changes) {
     return api.put(`/approval-hierarchies/${id}`, changes)
   },
 
-  async removeHierarchy(id, userId) {
+  async removeHierarchy(id) {
     return api.delete(`/approval-hierarchies/${id}`)
   },
 

@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiPackage, FiPlus, FiSearch, FiEdit2, FiTrash2, FiX, FiChevronDown, FiChevronUp, FiClock, FiAlertTriangle, FiRefreshCw, FiDownload, FiArrowDown, FiArrowUp } from 'react-icons/fi'
+import { FiPackage, FiPlus, FiSearch, FiEdit2, FiTrash2, FiX, FiChevronDown, FiChevronUp, FiClock, FiRefreshCw, FiArrowDown, FiArrowUp } from 'react-icons/fi'
 import inventoryService from '../services/inventoryService'
-import db from '../services/db'
+import { useAuth } from '../contexts/AuthContext'
 
 const fadeUp = { initial: { opacity: 0, y: 20 }, animate: { opacity: 1, y: 0 } }
 
@@ -20,32 +20,47 @@ export default function Inventory() {
   const [stats, setStats] = useState(null)
   const [search, setSearch] = useState('')
   const [stockFilter, setStockFilter] = useState('all')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [categories, setCategories] = useState([])
   const [modalOpen, setModalOpen] = useState(null)
   const [moveModal, setMoveModal] = useState(null)
   const [expandedMovements, setExpandedMovements] = useState({})
   const [form, setForm] = useState({ name: '', sku: '', category: 'General', stock: '', minStock: '10', price: '', cost: '', location: '', unit: 'unidad', description: '', batch: '', expiry_date: '' })
   const [moveForm, setMoveForm] = useState({ quantity: '', reason: '', type: 'in' })
   const [editId, setEditId] = useState(null)
+  const [categories, setCategories] = useState([])
+  const [loading, setLoading] = useState(false)
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
+  const { user } = useAuth()
+  const userId = user?.userId || user?.id
 
-  const load = async () => {
-    const filters = {}
-    if (search) filters.search = search
-    if (stockFilter !== 'all') filters.stockFilter = stockFilter
-    const data = await inventoryService.list(filters)
-    setItems(data)
-    const m = await inventoryService.getStockMovements()
-    setMovements(m)
-    const s = await inventoryService.getStats()
-    setStats(s)
-    const c = await inventoryService.getCategories()
-    setCategories(c)
-  }
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await inventoryService.list({})
+      setItems(data)
+      const m = await inventoryService.getStockMovements()
+      setMovements(m)
+      const s = await inventoryService.getStats()
+      setStats(s)
+      const c = await inventoryService.getCategories()
+      setCategories(c)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  useEffect(() => { load() }, [search, stockFilter])
+  useEffect(() => { load() }, [load])
+
+  const visibleItems = items.filter(item => {
+    const q = search.toLowerCase()
+    const matchSearch = !q || item.name?.toLowerCase().includes(q) || item.sku?.toLowerCase().includes(q) || item.category?.toLowerCase().includes(q)
+    const matchStock =
+      stockFilter === 'all' ? true :
+      stockFilter === 'out' ? item.stock <= 0 :
+      stockFilter === 'critical' ? item.stock > 0 && item.stock <= 3 :
+      stockFilter === 'low' ? item.stock > 0 && item.stock <= (item.minStock || 10) :
+      true
+    return matchSearch && matchStock
+  })
 
   const handleFormChange = (e) => setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
 
@@ -117,6 +132,12 @@ export default function Inventory() {
 
   return (
     <div className="p-6 space-y-8">
+      {loading && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+          <div className="spinner" />
+        </div>
+      )}
+      {!loading && (<>
       <motion.div {...fadeUp} transition={{ duration: 0.4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
           <div style={{ padding: 10, borderRadius: 12, background: 'var(--accent-gradient)', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
@@ -168,12 +189,12 @@ export default function Inventory() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.length === 0 ? (
+        {visibleItems.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
             <FiPackage size={40} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
-            No hay productos en inventario. Crea tu primer producto.
+            {items.length === 0 ? 'No hay productos en inventario. Crea tu primer producto.' : 'Ningún producto coincide con el filtro.'}
           </div>
-        ) : items.map((item, i) => {
+        ) : visibleItems.map((item, i) => {
           const level = stockLevel(item.stock, item.minStock)
           const itemMoves = filteredMovements(item.id)
           const expanded = expandedMovements[item.id]
@@ -382,6 +403,7 @@ export default function Inventory() {
           </motion.div>
         )}
       </AnimatePresence>
+      </>)}
     </div>
   )
 }

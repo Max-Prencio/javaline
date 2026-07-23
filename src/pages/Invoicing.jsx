@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiFileText, FiPlus, FiX, FiDollarSign, FiCalendar, FiUsers, FiSearch, FiCheck, FiAlertTriangle, FiRefreshCw, FiPrinter, FiPercent } from 'react-icons/fi'
+import { FiFileText, FiPlus, FiX, FiDollarSign, FiUsers, FiSearch, FiCheck, FiAlertTriangle, FiRefreshCw, FiPrinter } from 'react-icons/fi'
 import { invoiceService, productService, contactService } from '../services/entityService'
+import currencyService from '../services/currencyService'
+import taxRateService from '../services/taxRateService'
+import auditService from '../services/auditService'
 import db from '../services/db'
+import { useAuth } from '../contexts/AuthContext'
 import { buildInvoiceHtml } from '../utils/print'
 import PrintPreviewModal from '../components/PrintPreviewModal'
 import { maskRNC } from '../utils/mask'
@@ -18,7 +22,7 @@ const statusStyles = {
 const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } }
 const rowItem = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } }
 
-function formatMoney(n) { return (n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 }) }
+import { formatMoney } from '../utils/format'
 
 function MaskedRNC({ value }) {
   const [revealed, setRevealed] = useState(false)
@@ -46,13 +50,7 @@ function calcTax(taxableBase, taxRate) {
   return taxableBase * (taxRate?.rate || 0)
 }
 
-function recalc(items, discount, discountType, taxRate) {
-  const subtotal = items.reduce((s, i) => s + i.total, 0)
-  const discountAmount = calcDiscount(subtotal, discount, discountType)
-  const taxableBase = Math.max(0, subtotal - discountAmount)
-  const tax = calcTax(taxableBase, taxRate)
-  return { subtotal, discountAmount, taxableBase, tax, total: taxableBase + tax }
-}
+
 
 export default function Invoicing() {
   const [invoices, setInvoices] = useState([])
@@ -65,16 +63,34 @@ export default function Invoicing() {
   const [searchQuery, setSearchQuery] = useState('')
   const [currencies, setCurrencies] = useState([])
   const [taxRates, setTaxRates] = useState([])
+  const [discounts, setDiscounts] = useState([])
+  const [exemptions, setExemptions] = useState([])
   const [printPreview, setPrintPreview] = useState({ show: false, html: '', title: '' })
+
+  const { user } = useAuth()
 
   const loadData = useCallback(async () => {
     const invs = await invoiceService.list()
     setInvoices(invs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)))
     setProducts(await productService.list())
     setContacts(await contactService.list())
-    setCurrencies(db.getAll('currencies'))
-    setTaxRates(db.getAll('taxRates'))
-    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
+    setCurrencies(await currencyService.list())
+    try {
+      const { default: apiClient } = await import('../services/apiClient')
+      const [taxRes, discRes, exRes] = await Promise.all([
+        apiClient.get('/accounting/taxes'),
+        apiClient.get('/accounting/discounts'),
+        apiClient.get('/accounting/exemptions'),
+      ])
+      setTaxRates(taxRes?.length ? taxRes.map(t => ({ id: t.id, name: t.name, rate: t.rate / 100, type: t.type })) : await taxRateService.list())
+      setDiscounts(discRes?.length ? discRes : [])
+      setExemptions(exRes?.length ? exRes : [])
+    } catch {
+      setTaxRates(await taxRateService.list())
+      setDiscounts([])
+      setExemptions([])
+    }
+    const userId = user?.userId || user?.id
     if (userId) {
       const { default: cashRegisterService } = await import('../services/cashRegisterService')
       setCashRegister(await cashRegisterService.getOpen(userId))
@@ -91,7 +107,7 @@ export default function Invoicing() {
   }
 
   const confirmPayment = async (invId, amountReceived, changeReturned) => {
-    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
+    const userId = user?.userId || user?.id
     await invoiceService.update(invId, { status: 'paid', amountReceived, changeReturned }, userId)
     const inv = invoices.find(i => i.id === invId)
     const { default: cashRegisterService } = await import('../services/cashRegisterService')
@@ -99,13 +115,13 @@ export default function Invoicing() {
       type: 'income', concept: `Factura ${invId}`, amount: amountReceived - changeReturned,
       paymentMethod: inv?.paymentMethod || 'transfer', reference: invId,
     }, userId)
-    db.addAudit({ action: 'reconcile', store: 'invoices', detail: `Pago registrado: ${invId} — Recibido: $${formatMoney(amountReceived)}, Cambio: $${formatMoney(changeReturned)}`, userId })
+    auditService.add({ action: 'reconcile', store: 'invoices', detail: `Pago registrado: ${invId} — Recibido: $${formatMoney(amountReceived)}, Cambio: $${formatMoney(changeReturned)}`, userId })
     setPaymentModal(null)
     loadData()
   }
 
   const handleCancelReconciliation = async (invId) => {
-    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
+    const userId = user?.userId || user?.id
     const inv = invoices.find(i => i.id === invId)
     await invoiceService.update(invId, { status: 'rejected' }, userId)
     if (cashRegister && inv) {
@@ -113,12 +129,12 @@ export default function Invoicing() {
       const txn = (cashRegister.transactions || []).find(t => t.reference === invId)
       if (txn) await cashRegisterService.removeTransaction(cashRegister.id, txn.id, userId)
     }
-    db.addAudit({ action: 'cancel_reconcile', store: 'invoices', detail: `Conciliación cancelada: ${invId}`, userId })
+    auditService.add({ action: 'cancel_reconcile', store: 'invoices', detail: `Conciliación cancelada: ${invId}`, userId })
     loadData()
   }
 
   const handleRectify = async (invId) => {
-    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
+    const userId = user?.userId || user?.id
     const original = invoices.find(i => i.id === invId)
     await invoiceService.update(invId, { status: 'rectified', rectifiedBy: 'pending' }, userId)
     const rectified = await invoiceService.create({
@@ -126,7 +142,7 @@ export default function Invoicing() {
       status: 'pending', date: new Date().toISOString().slice(0, 10), rectifiesId: invId,
       clientName: `${original.clientName} (Rectificación)`,
     }, userId)
-    db.addAudit({ action: 'rectify', store: 'invoices', detail: `Factura rectificada: ${invId} → ${rectified.id}`, userId })
+    auditService.add({ action: 'rectify', store: 'invoices', detail: `Factura rectificada: ${invId} → ${rectified.id}`, userId })
     loadData()
   }
 
@@ -266,9 +282,9 @@ export default function Invoicing() {
         </div>
       </div>
 
-      <CreateInvoiceModal open={modalOpen} onClose={() => setModalOpen(false)} onDone={loadData} products={products} contacts={contacts} currencies={currencies} cashRegister={cashRegister} taxRates={taxRates} />
+      <CreateInvoiceModal open={modalOpen} onClose={() => setModalOpen(false)} onDone={loadData} products={products} contacts={contacts} currencies={currencies} cashRegister={cashRegister} taxRates={taxRates} discounts={discounts} exemptions={exemptions} />
 
-      <DetailModal inv={detailModal} onClose={() => setDetailModal(null)} taxRates={taxRates} />
+      <DetailModal inv={detailModal} onClose={() => setDetailModal(null)} taxRates={taxRates} exemptions={exemptions} />
 
       <PaymentModal inv={paymentModal} onClose={() => setPaymentModal(null)} onConfirm={confirmPayment} formatMoney={formatMoney} />
 
@@ -277,9 +293,8 @@ export default function Invoicing() {
   )
 }
 
-function canInvoiceSupplier() {
-  const user = JSON.parse(localStorage.getItem('javaline_session') || '{}')
-  if (!user.id) return false
+function canInvoiceSupplier(user) {
+  if (!user?.id) return false
   if (user.role === 'admin') return true
   if (user.permissions?.includes('factura_proveedor') || user.permissions?.includes('todos')) return true
   const roles = db.getAll('roles')
@@ -287,7 +302,7 @@ function canInvoiceSupplier() {
   return userRole?.modules?.includes('Contabilidad') || userRole?.modules?.includes('Todos') || false
 }
 
-function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currencies, cashRegister, taxRates }) {
+function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currencies, cashRegister, taxRates, discounts, exemptions }) {
   const [step, setStep] = useState(1)
   const [validationError, setValidationError] = useState('')
   const defaultTaxRate = taxRates.find(t => t.id === 'TAX-001') || taxRates[0] || { id: 'TAX-001', name: 'ITBIS General', rate: 0.18 }
@@ -297,10 +312,14 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
     currency: 'DOP', paymentType: 'debit', paymentMethod: 'transfer',
     items: [], subtotal: 0, discount: 0, discountType: 'percentage', discountAmount: 0,
     taxableBase: 0, taxRateId: defaultTaxRate.id, tax: 0, total: 0, notes: '',
-    installmentPlan: null,
+    installmentPlan: null, amountReceived: '', changeReturned: 0,
+    selectedExemptions: [],
   })
   const [selectedProduct, setSelectedProduct] = useState('')
   const [productQty, setProductQty] = useState(1)
+  const [selectedDiscountPreset, setSelectedDiscountPreset] = useState('')
+
+  const { user } = useAuth()
 
   const reset = () => {
     setStep(1)
@@ -311,21 +330,24 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
       currency: 'DOP', paymentType: 'debit', paymentMethod: 'transfer',
       items: [], subtotal: 0, discount: 0, discountType: 'percentage', discountAmount: 0,
       taxableBase: 0, taxRateId: defaultTaxRate.id, tax: 0, total: 0, notes: '',
-      installmentPlan: null,
+      installmentPlan: null, amountReceived: '', changeReturned: 0,
+      selectedExemptions: [],
     })
     setSelectedProduct('')
     setProductQty(1)
+    setSelectedDiscountPreset('')
   }
 
   const getTaxRate = (id) => taxRates.find(t => t.id === (id || form.taxRateId)) || defaultTaxRate
 
-  const updateTotals = (items, discount, discountType, taxRateId) => {
+  const updateTotals = (items, discount, discountType, taxRateId, selectedExemptions = []) => {
     const subtotal = items.reduce((s, i) => s + i.total, 0)
     const discountAmount = calcDiscount(subtotal, discount, discountType)
     const taxableBase = Math.max(0, subtotal - discountAmount)
+    const isExempt = selectedExemptions.length > 0
     const taxRate = getTaxRate(taxRateId)
-    const tax = calcTax(taxableBase, taxRate)
-    return { subtotal, discountAmount, taxableBase, tax, total: taxableBase + tax }
+    const tax = isExempt ? 0 : calcTax(taxableBase, taxRate)
+    return { subtotal, discountAmount, taxableBase, tax, total: isExempt ? taxableBase : taxableBase + tax }
   }
 
   const addProduct = () => {
@@ -337,7 +359,7 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
     const total = price * qty
     setForm(prev => {
       const items = [...prev.items, { productId: p.id, productName: p.name, qty, price, total }]
-      const totals = updateTotals(items, prev.discount, prev.discountType, prev.taxRateId)
+      const totals = updateTotals(items, prev.discount, prev.discountType, prev.taxRateId, prev.selectedExemptions)
       return { ...prev, items, ...totals }
     })
     setSelectedProduct('')
@@ -347,7 +369,7 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
   const removeItem = (idx) => {
     setForm(prev => {
       const items = prev.items.filter((_, i) => i !== idx)
-      const totals = updateTotals(items, prev.discount, prev.discountType, prev.taxRateId)
+      const totals = updateTotals(items, prev.discount, prev.discountType, prev.taxRateId, prev.selectedExemptions)
       return { ...prev, items, ...totals }
     })
   }
@@ -355,15 +377,26 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
   const handleDiscountChange = (val, type) => {
     const discount = Math.max(0, Number(val) || 0)
     setForm(prev => {
-      const totals = updateTotals(prev.items, discount, type || prev.discountType, prev.taxRateId)
+      const totals = updateTotals(prev.items, discount, type || prev.discountType, prev.taxRateId, prev.selectedExemptions)
       return { ...prev, discount, discountType: type || prev.discountType, ...totals }
     })
   }
 
   const handleTaxRateChange = (taxRateId) => {
     setForm(prev => {
-      const totals = updateTotals(prev.items, prev.discount, prev.discountType, taxRateId)
+      const totals = updateTotals(prev.items, prev.discount, prev.discountType, taxRateId, prev.selectedExemptions)
       return { ...prev, taxRateId, ...totals }
+    })
+  }
+
+  const handleExemptionsChange = (exemptionId) => {
+    setForm(prev => {
+      const wasSelected = prev.selectedExemptions.includes(exemptionId)
+      const selectedExemptions = wasSelected
+        ? prev.selectedExemptions.filter(id => id !== exemptionId)
+        : [...prev.selectedExemptions, exemptionId]
+      const totals = updateTotals(prev.items, prev.discount, prev.discountType, prev.taxRateId, selectedExemptions)
+      return { ...prev, selectedExemptions, ...totals }
     })
   }
 
@@ -371,7 +404,7 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
     if (form.items.length === 0) { alert('Agrega al menos un producto'); return }
     if (!form.clientName.trim()) { alert('Selecciona un cliente'); return }
     if (form.type === 'client' && !cashRegister) { alert('No puedes facturar a clientes con la caja cerrada. Abre la caja primero.'); return }
-    if (form.type === 'supplier' && !canInvoiceSupplier()) { alert('No tienes permiso para crear facturas a proveedores. Solicita acceso al módulo de Contabilidad.'); return }
+    if (form.type === 'supplier' && !canInvoiceSupplier(user)) { alert('No tienes permiso para crear facturas a proveedores. Solicita acceso al módulo de Contabilidad.'); return }
     if (form.paymentType === 'credit') {
       const totalInstallments = parseInt(prompt('Número de cuotas:', '3')) || 3
       const amountPerInstallment = form.total / totalInstallments
@@ -381,9 +414,9 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
       }))
       form.installmentPlan = { totalInstallments, amountPerInstallment, frequency: 'monthly', startDate: installments[0].dueDate, installments }
     }
-    const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
-    await invoiceService.create({ ...form, status: 'pending', cashRegisterId: cashRegister?.id || null }, userId)
-    db.addAudit({ action: 'create_invoice', store: 'invoices', detail: `Factura creada: ${form.clientName} — $${formatMoney(form.total)}`, userId })
+    const userId = user?.userId || user?.id
+    await invoiceService.create({ ...form, status: 'pending', cashRegisterId: cashRegister?.id || null, amountReceived: form.paymentMethod === 'cash' ? Number(form.amountReceived) || 0 : 0, changeReturned: form.paymentMethod === 'cash' ? form.changeReturned : 0 }, userId)
+    auditService.add({ action: 'create_invoice', store: 'invoices', detail: `Factura creada: ${form.clientName} — $${formatMoney(form.total)}`, userId })
     reset()
     onClose()
     onDone()
@@ -431,7 +464,7 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
                   {form.type === 'client' && !cashRegister && (
                     <span style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>Requiere caja abierta</span>
                   )}
-                  {form.type === 'supplier' && !canInvoiceSupplier() && (
+                  {form.type === 'supplier' && !canInvoiceSupplier(user) && (
                     <span style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>Requiere permiso Contabilidad → factura a proveedores</span>
                   )}
                 </div>
@@ -470,10 +503,10 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={() => {
                   if (form.type === 'client' && !cashRegister) { setValidationError('Debes abrir la caja antes de facturar a clientes.'); return }
-                  if (form.type === 'supplier' && !canInvoiceSupplier()) { setValidationError('No tienes permiso para facturar a proveedores. Este permiso lo otorga Contabilidad.'); return }
+                  if (form.type === 'supplier' && !canInvoiceSupplier(user)) { setValidationError('No tienes permiso para facturar a proveedores. Este permiso lo otorga Contabilidad.'); return }
                   setValidationError(''); setStep(2)
                 }}
-                  style={{ padding: '12px 32px', background: (!cashRegister && form.type === 'client') || (form.type === 'supplier' && !canInvoiceSupplier()) ? '#6b5a4a' : 'var(--accent-gradient)', border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                  style={{ padding: '12px 32px', background: (!cashRegister && form.type === 'client') || (form.type === 'supplier' && !canInvoiceSupplier(user)) ? '#6b5a4a' : 'var(--accent-gradient)', border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
                   Siguiente — Productos
                 </motion.button>
               </div>
@@ -532,14 +565,26 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <label style={{ color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Descuento</label>
+                  {discounts.length > 0 && (
+                    <select value={selectedDiscountPreset} onChange={e => {
+                      const d = discounts.find(x => x.id === e.target.value)
+                      if (d) { handleDiscountChange(d.value, d.type); setSelectedDiscountPreset(e.target.value) }
+                    }}
+                      style={{ padding: '10px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-muted)', fontSize: 12, outline: 'none', marginBottom: 4 }}>
+                      <option value="">— Seleccionar descuento —</option>
+                      {discounts.filter(d => d.active).map(d => (
+                        <option key={d.id} value={d.id}>{d.name} ({d.type === 'percentage' ? `${d.value}%` : `$${d.value}`})</option>
+                      ))}
+                    </select>
+                  )}
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', flex: 1 }}>
-                      <button onClick={() => handleDiscountChange(form.discount, 'percentage')}
+                      <button onClick={() => { setSelectedDiscountPreset(''); handleDiscountChange(form.discount, 'percentage') }}
                         style={{ flex: 1, padding: '8px 10px', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: form.discountType === 'percentage' ? 'var(--accent)' : 'var(--bg-card)', color: form.discountType === 'percentage' ? '#fff' : 'var(--text-secondary)' }}>%</button>
-                      <button onClick={() => handleDiscountChange(form.discount, 'amount')}
+                      <button onClick={() => { setSelectedDiscountPreset(''); handleDiscountChange(form.discount, 'amount') }}
                         style={{ flex: 1, padding: '8px 10px', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: form.discountType === 'amount' ? 'var(--accent)' : 'var(--bg-card)', color: form.discountType === 'amount' ? '#fff' : 'var(--text-secondary)' }}>$</button>
                     </div>
-                    <input type="number" min={0} value={form.discount} onChange={e => handleDiscountChange(e.target.value)}
+                    <input type="number" min={0} value={form.discount} onChange={e => { setSelectedDiscountPreset(''); handleDiscountChange(e.target.value) }}
                       placeholder="0" style={{ width: 80, padding: '10px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 13, outline: 'none' }} />
                   </div>
                 </div>
@@ -553,6 +598,23 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
                   </select>
                 </div>
               </div>
+
+              {exemptions.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>Exoneraciones</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {exemptions.filter(e => e.active).map(ex => (
+                      <label key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: form.selectedExemptions.includes(ex.id) ? 'rgba(16,185,129,0.1)' : 'var(--bg-card)', border: `1px solid ${form.selectedExemptions.includes(ex.id) ? 'rgba(16,185,129,0.3)' : 'var(--border)'}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, color: form.selectedExemptions.includes(ex.id) ? '#10b981' : 'var(--text-secondary)', fontWeight: 500, transition: 'all 0.15s' }}>
+                        <input type="checkbox" checked={form.selectedExemptions.includes(ex.id)} onChange={() => handleExemptionsChange(ex.id)} style={{ display: 'none' }} />
+                        <div style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${form.selectedExemptions.includes(ex.id) ? '#10b981' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', background: form.selectedExemptions.includes(ex.id) ? '#10b981' : 'transparent', transition: 'all 0.15s' }}>
+                          {form.selectedExemptions.includes(ex.id) && <FiCheck size={10} color="#fff" />}
+                        </div>
+                        {ex.name}{ex.description ? ` — ${ex.description}` : ''}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div style={{ background: 'var(--bg-secondary)', padding: '16px', borderRadius: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 4 }}>
@@ -615,6 +677,44 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
                 )}
               </div>
 
+              {form.paymentType === 'debit' && form.paymentMethod === 'cash' && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                  style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <h3 style={{ color: 'var(--text-primary)', fontSize: 14, fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <FiDollarSign size={16} style={{ color: 'var(--accent)' }} /> Pago en Efectivo
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label style={{ color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Monto Recibido</label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: 16, fontWeight: 600 }}>$</span>
+                      <input type="number" min={0} step="0.01" value={form.amountReceived}
+                        onChange={e => {
+                          const received = Number(e.target.value) || 0
+                          const change = Math.max(0, received - form.total)
+                          setForm({ ...form, amountReceived: e.target.value, changeReturned: change })
+                        }}
+                        placeholder="0.00"
+                        style={{ width: '100%', padding: '14px 14px 14px 32px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text-primary)', fontSize: 18, fontWeight: 600, outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                  {Number(form.amountReceived) > 0 && (
+                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderRadius: 10,
+                        background: form.changeReturned > 0 ? 'rgba(245,158,11,0.1)' : Number(form.amountReceived) >= form.total ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                        border: `1px solid ${form.changeReturned > 0 ? 'rgba(245,158,11,0.2)' : Number(form.amountReceived) >= form.total ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                      }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: form.changeReturned > 0 ? '#f59e0b' : Number(form.amountReceived) >= form.total ? '#10b981' : '#ef4444' }}>
+                        {form.changeReturned > 0 ? 'Cambio a devolver' : Number(form.amountReceived) >= form.total ? 'Monto exacto' : 'Faltan'}
+                      </span>
+                      <span style={{ fontSize: 24, fontWeight: 700, color: form.changeReturned > 0 ? '#f59e0b' : Number(form.amountReceived) >= form.total ? '#10b981' : '#ef4444' }}>
+                        {form.changeReturned > 0 ? `RD$ ${formatMoney(form.changeReturned)}` : Number(form.amountReceived) >= form.total ? '✓' : `RD$ ${formatMoney(form.total - Number(form.amountReceived))}`}
+                      </span>
+                    </motion.div>
+                  )}
+                </motion.div>
+              )}
+
               <div style={{ background: 'var(--bg-secondary)', padding: '16px', borderRadius: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 4 }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Cliente</span>
@@ -663,7 +763,7 @@ function CreateInvoiceModal({ open, onClose, onDone, products, contacts, currenc
   )
 }
 
-function DetailModal({ inv, onClose, taxRates }) {
+function DetailModal({ inv, onClose, taxRates, exemptions }) {
   if (!inv) return null
   const taxRate = taxRates.find(t => t.id === inv.taxRateId)
   return (
@@ -704,6 +804,19 @@ function DetailModal({ inv, onClose, taxRates }) {
                   </tr>
                 ))}</tbody>
               </table>
+            </div>
+          )}
+          {inv.selectedExemptions && inv.selectedExemptions.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', alignSelf: 'center', marginRight: 4 }}>Exoneraciones:</span>
+              {inv.selectedExemptions.map(exId => {
+                const ex = exemptions.find(e => e.id === exId)
+                return (
+                  <span key={exId} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', fontSize: 12, fontWeight: 500, color: '#10b981' }}>
+                    <FiCheck size={10} /> {ex ? ex.name : exId}
+                  </span>
+                )
+              })}
             </div>
           )}
           {inv.installmentPlan && (

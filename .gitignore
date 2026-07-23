@@ -3,4 +3,35 @@ dist/
 **/__pycache__/
 *.pyc
 .env
+.DS_Store
+**/.DS_Store
+
+# Python backend (replaced by .NET)
 backend/email_log.txt
+
+# .NET build artifacts
+dotnet-backend/**/bin/
+dotnet-backend/**/obj/
+dotnet-backend/src/**/appsettings.Development.json
+
+# Audit/report markdown files
+AUDITORIA_TECNICA.md
+AUDIT_REPORT.md
+ENTERPRISE_ERP_GAP_ANALYSIS.md
+ENTERPRISE_EVOLUTION_REPORT.md
+ENTERPRISE_IMPROVEMENT_REPORT.md
+JAVALINE_WORK_REPORT.md
+KNOWLEDGE_BASE.md
+MIGRATION_PROMPT.md
+PRODUCTION_REPORT.md
+PROJECT_ARCHITECTURE.md
+PROMPT_1_REFACTOR.md
+PROMPT_2_ACCOUNTING.md
+PROMPT_3_ACCOUNTING_NAV.md
+PROMPT_4_NAV_MODULES.md
+PROMPT_5_SECURITY_FIXES.md
+PROMPT_6_POSTGRESQL_SETUP.md
+SYSTEM_INFRASTRUCTURE_DIAGNOSTIC.md
+audit.log
+audit.sh
+watch-audit.sh

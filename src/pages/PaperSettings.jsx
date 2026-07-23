@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiSettings, FiPlus, FiX, FiSearch, FiCheck, FiTrash2, FiPrinter, FiSave } from 'react-icons/fi'
+import { FiPlus, FiSearch, FiCheck, FiTrash2, FiPrinter, FiSave } from 'react-icons/fi'
 import paperSizeService from '../services/paperSizeService'
-import db from '../services/db'
+import auditService from '../services/auditService'
+import { useAuth } from '../contexts/AuthContext'
 
 function formatMM(n) { return n != null ? `${n}mm` : '-' }
 
@@ -14,7 +15,8 @@ export default function PaperSettings() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', width: '', height: '', unit: 'mm', category: 'custom', icon: '📐' })
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
+  const { user } = useAuth()
+  const userId = user?.userId || user?.id
 
   const load = async () => {
     setSizes(await paperSizeService.list())
@@ -34,7 +36,7 @@ export default function PaperSettings() {
   const handleCreate = async () => {
     if (!form.name || !form.width || !form.height) return
     await paperSizeService.create(form)
-    db.addAudit({action:'create_paper_size',store:'paperSizes',detail:`Formato creado: ${form.name} (${form.width}x${form.height}mm)`,userId})
+    auditService.add({action:'create_paper_size',store:'paperSizes',detail:`Formato creado: ${form.name} (${form.width}x${form.height}mm)`,userId})
     setForm({name:'',width:'',height:'',unit:'mm',category:'custom',icon:'📐'})
     setShowForm(false)
     load()
@@ -42,13 +44,13 @@ export default function PaperSettings() {
 
   const handleDelete = async (id) => {
     await paperSizeService.remove(id)
-    db.addAudit({action:'delete_paper_size',store:'paperSizes',detail:`Formato eliminado: ${id}`,userId})
+    auditService.add({action:'delete_paper_size',store:'paperSizes',detail:`Formato eliminado: ${id}`,userId})
     load()
   }
 
   const handleConfigChange = async (reportType, paperSizeId) => {
     await paperSizeService.setConfig(reportType, paperSizeId)
-    db.addAudit({action:'set_paper_config',store:'paperConfigs',detail:`${reportType} → ${paperSizeId}`,userId})
+    auditService.add({action:'set_paper_config',store:'paperConfigs',detail:`${reportType} → ${paperSizeId}`,userId})
     load()
   }
 
@@ -65,14 +67,14 @@ export default function PaperSettings() {
           <h1 style={{color:'var(--text-primary)',fontSize:28,fontWeight:700,margin:0,letterSpacing:'-0.3px'}}>Formatos de Papel</h1>
         </div>
 
-        <div style={{display:'flex',gap:8,marginBottom:24,borderBottom:'1px solid var(--border)',paddingBottom:0}}>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',padding:'12px 0',marginBottom:24,borderBottom:'1px solid var(--border)'}}>
           {[
             { key:'sizes', label:'Formatos Disponibles', icon:FiPrinter },
             { key:'mapping', label:'Asignación por Reporte', icon:FiSave },
           ].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              style={{display:'flex',alignItems:'center',gap:8,padding:'12px 20px',background:'none',border:'none',borderBottom:`2px solid ${tab === t.key ? 'var(--accent)' : 'transparent'}`,color: tab === t.key ? 'var(--accent)' : 'var(--text-muted)',fontSize:13,fontWeight:600,cursor:'pointer',transition:'all 0.2s'}}>
-              <t.icon size={16} /> {t.label}
+              style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',background:tab===t.key?'rgba(var(--accent-rgb,234,88,12),0.12)':'var(--bg-elevated)',border:tab===t.key?'1px solid var(--accent)':'1px solid var(--border)',borderRadius:8,color:tab===t.key?'var(--accent)':'var(--text-muted)',fontSize:12,fontWeight:600,cursor:'pointer',transition:'all 0.15s'}}>
+              <t.icon size={13} /> {t.label}
             </button>
           ))}
         </div>

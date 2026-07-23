@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -80,8 +80,11 @@ const item = {
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [wizard, setWizard] = useState(null)
+
+  useEffect(() => { setLoading(false) }, [])
 
   const stats = useMemo(() => ({
     totalFacturado: INVOICES.reduce((s, i) => s + i.amount, 0),
@@ -107,6 +110,8 @@ export default function Dashboard() {
     ),
     [searchQuery, recentInvoices]
   )
+
+  if (loading) return (<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}><div className="spinner" /></div>)
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>

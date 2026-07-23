@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FiCheckSquare, FiPlus, FiX, FiUser, FiFlag, FiSearch } from 'react-icons/fi'
+import { FiPlus, FiX, FiUser, FiFlag, FiSearch } from 'react-icons/fi'
 import { taskService } from '../services/entityService'
+import { useAuth } from '../contexts/AuthContext'
 
 const COLUMNS = [
   { key: 'todo', label: 'Por Hacer', bg: 'var(--bg-elevated)' },
@@ -99,12 +100,19 @@ export default function Tasks() {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState(defaultForm)
   const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const userId = JSON.parse(localStorage.getItem('javaline_session') || '{}').userId
+  const { user } = useAuth()
+  const userId = user?.userId || user?.id
 
   const load = useCallback(async () => {
-    const data = await taskService.list()
-    setTasks(data)
+    setLoading(true)
+    try {
+      const data = await taskService.list()
+      setTasks(data)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -128,6 +136,12 @@ export default function Tasks() {
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="p-6 space-y-6">
+      {loading && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+          <div className="spinner" />
+        </div>
+      )}
+      {!loading && (<>
       <motion.div variants={itemAnim} className="flex items-center justify-between">
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
@@ -377,6 +391,7 @@ export default function Tasks() {
           </motion.div>
         )}
       </AnimatePresence>
+      </>)}
     </motion.div>
   )
 }

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { FiSend, FiTrash2, FiMessageSquare, FiZap, FiClock, FiDatabase, FiAlertTriangle, FiPackage, FiAlertCircle, FiBook } from 'react-icons/fi'
+import { FiSend, FiTrash2, FiMessageSquare, FiZap, FiDatabase, FiAlertTriangle, FiBook } from 'react-icons/fi'
 import api from '../services/apiClient'
 
 export default function AIAssistant() {
@@ -70,7 +70,7 @@ export default function AIAssistant() {
       if (res.sql) setLastSql(res.sql)
       if (res.alerts && res.alerts.length > 0) setAlerts(res.alerts)
       loadConversations()
-    } catch (e) {
+    } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Error al conectar con el asistente. Verifica la configuración de OpenAI.' }])
     } finally {
       setLoading(false)

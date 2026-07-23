@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   FiPackage, FiBell, FiChevronRight, FiClock, FiAlertTriangle, FiCheckCircle,
-  FiMenu, FiLogOut, FiArrowLeft, FiUser,
+  FiMenu, FiLogOut, FiUser,
 } from 'react-icons/fi'
 import pocketService from '../services/pocketService'
 import { useAuth } from '../contexts/AuthContext'
@@ -40,7 +40,7 @@ export default function PocketDashboard() {
       load()
     })
     return () => wsRef.current?.close()
-  }, [user])
+  }, [user, load])
 
   const handleLogout = () => { logout(); navigate('/login') }
 
