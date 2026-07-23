@@ -450,25 +450,54 @@ public class HRController : ControllerBase
 
     // ─── ATS Upload ───
 
+    private const long MaxUploadBytes = 10 * 1024 * 1024; // 10 MB
+    private static readonly string[] AllowedUploadExtensions =
+        [".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg", ".gif", ".webp"];
+
+    // Returns (safeFilename, error) — strips path components and control chars.
+    private static (string? safe, string? error) SanitizeUploadFilename(IFormFile file)
+    {
+        if (file.Length > MaxUploadBytes)
+            return (null, $"El archivo excede el límite de {MaxUploadBytes / 1024 / 1024} MB");
+
+        // Strip any directory component the client may have embedded
+        var basename = Path.GetFileName(file.FileName);
+        if (string.IsNullOrWhiteSpace(basename))
+            return (null, "Nombre de archivo inválido");
+
+        var ext = Path.GetExtension(basename).ToLowerInvariant();
+        if (!AllowedUploadExtensions.Contains(ext))
+            return (null, $"Tipo de archivo no permitido: {ext}");
+
+        // Replace anything that is not alphanumeric, dash, underscore, or dot
+        var stem = Path.GetFileNameWithoutExtension(basename);
+        var safe = System.Text.RegularExpressions.Regex.Replace(stem, @"[^a-zA-Z0-9\-_]", "_");
+        if (safe.Length > 80) safe = safe[..80];
+
+        var uid = Guid.NewGuid().ToString("N")[..12];
+        return ($"{uid}_{safe}{ext}", null);
+    }
+
     [HttpPost("ats/upload")]
+    [RequestSizeLimit(MaxUploadBytes + 4096)]
     public async Task<IActionResult> UploadATSFile(IFormFile file)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new { detail = "Archivo requerido" });
 
-        var allowedExt = new[] { ".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg", ".gif", ".webp" };
-        var ext = Path.GetExtension(file.FileName).ToLower();
-        if (!allowedExt.Contains(ext))
-            return BadRequest(new { detail = $"Tipo de archivo no permitido: {ext}" });
+        var (fname, err) = SanitizeUploadFilename(file);
+        if (err != null) return BadRequest(new { detail = err });
 
         var uploadDir = Path.Combine(Directory.GetCurrentDirectory(), "uploads", "ats");
         Directory.CreateDirectory(uploadDir);
 
-        var uid = Guid.NewGuid().ToString("N")[..8];
-        var fname = $"{uid}_{file.FileName}";
-        var fpath = Path.Combine(uploadDir, fname);
+        var fpath = Path.Combine(uploadDir, fname!);
 
-        using var stream = new FileStream(fpath, FileMode.Create);
+        // Verify final path is still inside uploadDir (double-check against traversal)
+        if (!Path.GetFullPath(fpath).StartsWith(Path.GetFullPath(uploadDir) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { detail = "Ruta de archivo inválida" });
+
+        await using var stream = new FileStream(fpath, FileMode.CreateNew);
         await file.CopyToAsync(stream);
 
         return Ok(new { filename = fname, path = $"/uploads/ats/{fname}" });
@@ -487,22 +516,27 @@ public class HRController : ControllerBase
     // ─── Position Upload Description ───
 
     [HttpPost("positions/{id}/upload-descr")]
+    [RequestSizeLimit(MaxUploadBytes + 4096)]
     public async Task<IActionResult> UploadPositionDescription(string id, IFormFile file)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new { detail = "Archivo requerido" });
 
+        var (fname, err) = SanitizeUploadFilename(file);
+        if (err != null) return BadRequest(new { detail = err });
+
         var uploadDir = Path.Combine(Directory.GetCurrentDirectory(), "uploads", "ats");
         Directory.CreateDirectory(uploadDir);
 
-        var uid = Guid.NewGuid().ToString("N")[..8];
-        var fname = $"{uid}_{file.FileName}";
-        var fpath = Path.Combine(uploadDir, fname);
+        var fpath = Path.Combine(uploadDir, fname!);
 
-        using var stream = new FileStream(fpath, FileMode.Create);
+        if (!Path.GetFullPath(fpath).StartsWith(Path.GetFullPath(uploadDir) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { detail = "Ruta de archivo inválida" });
+
+        await using var stream = new FileStream(fpath, FileMode.CreateNew);
         await file.CopyToAsync(stream);
 
-        var updated = await _hrService.UpdatePositionDescriptionAsync(id, fname);
+        var updated = await _hrService.UpdatePositionDescriptionAsync(id, fname!);
         if (updated == null) return NotFound(new { detail = "Posición no encontrada" });
 
         return Ok(new { filename = fname });

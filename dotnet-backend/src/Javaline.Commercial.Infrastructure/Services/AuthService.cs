@@ -48,7 +48,8 @@ public class AuthService : IAuthService
     {
         var exists = await _db.Users.AnyAsync(u => u.Email == request.Email, ct);
         if (exists)
-            throw new ApplicationException("A user with this email already exists.");
+            // Generic message — do not reveal whether the email is registered
+            throw new ApplicationException("No fue posible completar el registro. Verifica los datos e intenta de nuevo.");
 
         var user = new User
         {
@@ -158,7 +159,8 @@ public class AuthService : IAuthService
     {
         var existing = await _db.Users.AnyAsync(u => u.Email == request.Email);
         if (existing)
-            throw new ApplicationException("El correo ya está registrado");
+            // Generic — don't reveal if email is already registered
+            throw new ApplicationException("No fue posible enviar la invitación. Verifica el correo e intenta de nuevo.");
 
         var tempToken = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
             Guid.NewGuid().ToString("N") + DateTime.UtcNow.Ticks));
