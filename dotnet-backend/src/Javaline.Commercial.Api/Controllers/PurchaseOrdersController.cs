@@ -15,11 +15,19 @@ public class PurchaseOrdersController : ControllerBase
 {
     private readonly IPurchaseService _purchaseService;
     private readonly IStockService _stockService;
+    private readonly ICacheService _cache;
 
-    public PurchaseOrdersController(IPurchaseService purchaseService, IStockService stockService)
+    private static readonly TimeSpan ListTtl = TimeSpan.FromMinutes(2);
+    private const string Prefix = "po:";
+
+    public PurchaseOrdersController(
+        IPurchaseService purchaseService,
+        IStockService stockService,
+        ICacheService cache)
     {
         _purchaseService = purchaseService;
         _stockService = stockService;
+        _cache = cache;
     }
 
     private string? GetUserId() => User.FindFirst(ClaimTypes.NameIdentifier)?.Value
@@ -32,14 +40,21 @@ public class PurchaseOrdersController : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] string? status = null)
     {
-        var result = await _purchaseService.GetAllAsync(page, pageSize, search, status);
+        var key = $"{Prefix}list:{page}:{pageSize}:{search}:{status}";
+        var result = await _cache.GetOrCreateAsync(key,
+            () => _purchaseService.GetAllAsync(page, pageSize, search, status),
+            ListTtl);
         return Ok(result);
     }
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(string id)
     {
-        var item = await _purchaseService.GetByIdAsync(id);
+        var key = $"{Prefix}id:{id}";
+        var item = await _cache.GetOrCreateAsync(key,
+            () => _purchaseService.GetByIdAsync(id),
+            ListTtl);
+
         if (item == null) return NotFound(new { detail = "Purchase order not found." });
         return Ok(item);
     }
@@ -52,6 +67,7 @@ public class PurchaseOrdersController : ControllerBase
             return Unauthorized(new { detail = "User not authenticated." });
 
         var item = await _purchaseService.CreateAsync(dto, userId);
+        _cache.RemoveByPrefix(Prefix);
         return Ok(item);
     }
 
@@ -60,6 +76,8 @@ public class PurchaseOrdersController : ControllerBase
     {
         var item = await _purchaseService.UpdateAsync(id, dto);
         if (item == null) return NotFound(new { detail = "Purchase order not found." });
+
+        _cache.RemoveByPrefix(Prefix);
         return Ok(item);
     }
 
@@ -68,6 +86,8 @@ public class PurchaseOrdersController : ControllerBase
     {
         var deleted = await _purchaseService.DeleteAsync(id);
         if (!deleted) return NotFound(new { detail = "Purchase order not found." });
+
+        _cache.RemoveByPrefix(Prefix);
         return Ok(new { success = true });
     }
 
@@ -76,7 +96,10 @@ public class PurchaseOrdersController : ControllerBase
     [HttpGet("{id}/items")]
     public async Task<IActionResult> GetItems(string id)
     {
-        var items = await _purchaseService.GetItemsByOrderIdAsync(id);
+        var key = $"{Prefix}items:{id}";
+        var items = await _cache.GetOrCreateAsync(key,
+            () => _purchaseService.GetItemsByOrderIdAsync(id),
+            ListTtl);
         return Ok(items);
     }
 
@@ -85,6 +108,7 @@ public class PurchaseOrdersController : ControllerBase
     {
         var orderDto = dto with { OrderId = id };
         var item = await _purchaseService.CreateItemAsync(orderDto);
+        _cache.RemoveByPrefix(Prefix);
         return Ok(item);
     }
 
@@ -93,6 +117,8 @@ public class PurchaseOrdersController : ControllerBase
     {
         var deleted = await _purchaseService.DeleteItemAsync(itemId);
         if (!deleted) return NotFound(new { detail = "Item not found." });
+
+        _cache.RemoveByPrefix(Prefix);
         return Ok(new { success = true });
     }
 
@@ -103,6 +129,8 @@ public class PurchaseOrdersController : ControllerBase
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         var results = await _stockService.ReceiveFromPurchaseAsync(id, userId);
+        _cache.RemoveByPrefix(Prefix);
+        _cache.RemoveByPrefix("inv:"); // stock changed → invalidate inventory too
         return Ok(results);
     }
 }

@@ -127,6 +127,10 @@ builder.Services.AddOpenTelemetry()
         .AddHttpClientInstrumentation()
         .AddPrometheusExporter());
 
+// ─── Caching ───
+builder.Services.AddMemoryCache(o => o.SizeLimit = 2048);
+builder.Services.AddSingleton<ICacheService, MemoryCacheService>();
+
 // ─── DI Registration ───
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();

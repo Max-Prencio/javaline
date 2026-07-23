@@ -13,8 +13,17 @@ namespace Javaline.Commercial.Api.Controllers;
 public class InvoicesController : ControllerBase
 {
     private readonly IInvoiceService _invoiceService;
+    private readonly ICacheService _cache;
 
-    public InvoicesController(IInvoiceService invoiceService) => _invoiceService = invoiceService;
+    private static readonly TimeSpan ListTtl  = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan StatsTtl = TimeSpan.FromMinutes(2);
+    private const string Prefix = "invs:";
+
+    public InvoicesController(IInvoiceService invoiceService, ICacheService cache)
+    {
+        _invoiceService = invoiceService;
+        _cache = cache;
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -24,14 +33,21 @@ public class InvoicesController : ControllerBase
         [FromQuery] string? type = null,
         [FromQuery] string? search = null)
     {
-        var result = await _invoiceService.GetAllAsync(page, pageSize, status, type, search);
+        var key = $"{Prefix}list:{page}:{pageSize}:{status}:{type}:{search}";
+        var result = await _cache.GetOrCreateAsync(key,
+            () => _invoiceService.GetAllAsync(page, pageSize, status, type, search),
+            ListTtl);
         return Ok(result);
     }
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(string id)
     {
-        var invoice = await _invoiceService.GetByIdAsync(id);
+        var key = $"{Prefix}id:{id}";
+        var invoice = await _cache.GetOrCreateAsync(key,
+            () => _invoiceService.GetByIdAsync(id),
+            ListTtl);
+
         if (invoice == null)
             return NotFound(new { detail = "Invoice not found." });
 
@@ -48,6 +64,7 @@ public class InvoicesController : ControllerBase
             return Unauthorized(new { detail = "User not authenticated." });
 
         var invoice = await _invoiceService.CreateAsync(dto, userId);
+        _cache.RemoveByPrefix(Prefix);
         return CreatedAtAction(nameof(GetById), new { id = invoice.Id }, invoice);
     }
 
@@ -58,6 +75,7 @@ public class InvoicesController : ControllerBase
         if (invoice == null)
             return NotFound(new { detail = "Invoice not found." });
 
+        _cache.RemoveByPrefix(Prefix);
         return Ok(invoice);
     }
 
@@ -68,6 +86,7 @@ public class InvoicesController : ControllerBase
         if (!deleted)
             return NotFound(new { detail = "Invoice not found." });
 
+        _cache.RemoveByPrefix(Prefix);
         return Ok(new { success = true });
     }
 
@@ -78,20 +97,27 @@ public class InvoicesController : ControllerBase
         if (invoice == null)
             return NotFound(new { detail = "Invoice not found." });
 
+        _cache.RemoveByPrefix(Prefix);
         return Ok(invoice);
     }
 
     [HttpGet("accounts-receivable")]
     public async Task<IActionResult> GetAccountsReceivable([FromQuery] string? status = null)
     {
-        var result = await _invoiceService.GetAccountsReceivableAsync(status);
+        var key = $"{Prefix}ar:{status}";
+        var result = await _cache.GetOrCreateAsync(key,
+            () => _invoiceService.GetAccountsReceivableAsync(status),
+            StatsTtl);
         return Ok(result);
     }
 
     [HttpGet("dashboard-stats")]
     public async Task<IActionResult> GetDashboardStats()
     {
-        var stats = await _invoiceService.GetDashboardStatsAsync();
+        var key = $"{Prefix}stats";
+        var stats = await _cache.GetOrCreateAsync(key,
+            () => _invoiceService.GetDashboardStatsAsync(),
+            StatsTtl);
         return Ok(stats);
     }
 }
