@@ -4,6 +4,8 @@ using Javaline.Commercial.Application.Interfaces;
 using Javaline.Commercial.Domain.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Javaline.Commercial.Api.Controllers;
 
@@ -14,15 +16,17 @@ public class InvoicesController : ControllerBase
 {
     private readonly IInvoiceService _invoiceService;
     private readonly ICacheService _cache;
+    private readonly IBackgroundTaskQueue _queue;
 
     private static readonly TimeSpan ListTtl  = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan StatsTtl = TimeSpan.FromMinutes(2);
     private const string Prefix = "invs:";
 
-    public InvoicesController(IInvoiceService invoiceService, ICacheService cache)
+    public InvoicesController(IInvoiceService invoiceService, ICacheService cache, IBackgroundTaskQueue queue)
     {
         _invoiceService = invoiceService;
         _cache = cache;
+        _queue = queue;
     }
 
     [HttpGet]
@@ -65,6 +69,23 @@ public class InvoicesController : ControllerBase
 
         var invoice = await _invoiceService.CreateAsync(dto, userId);
         _cache.RemoveByPrefix(Prefix);
+
+        // Notify admins in background — response already returned to client
+        var invoiceId = invoice.Id;
+        var total     = invoice.Total;
+        await _queue.QueueAsync(async (sp, ct) =>
+        {
+            var db = sp.GetRequiredService<Javaline.Commercial.Infrastructure.Data.JavalineDbContext>();
+            var adminEmails = await db.Users
+                .Where(u => u.Role == "admin" && u.Status == "active")
+                .Select(u => u.Email)
+                .ToListAsync(ct);
+
+            var emailSvc = sp.GetRequiredService<IEmailService>();
+            foreach (var adminEmail in adminEmails)
+                await emailSvc.SendInvoiceNotificationAsync(adminEmail, invoiceId, total, ct);
+        });
+
         return CreatedAtAction(nameof(GetById), new { id = invoice.Id }, invoice);
     }
 

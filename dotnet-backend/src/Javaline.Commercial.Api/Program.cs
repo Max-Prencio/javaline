@@ -131,6 +131,11 @@ builder.Services.AddOpenTelemetry()
 builder.Services.AddMemoryCache(o => o.SizeLimit = 2048);
 builder.Services.AddSingleton<ICacheService, MemoryCacheService>();
 
+// ─── Background Queue ───
+builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
+builder.Services.AddHostedService<QueuedHostedService>();
+builder.Services.AddSingleton<IEmailService, EmailService>();
+
 // ─── DI Registration ───
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();

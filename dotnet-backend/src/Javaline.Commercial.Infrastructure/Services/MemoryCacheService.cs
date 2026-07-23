@@ -41,6 +41,31 @@ public class MemoryCacheService : ICacheService
         return value;
     }
 
+    public bool TryGet<T>(string key, out T? value)
+    {
+        if (_cache.TryGetValue(key, out T? cached))
+        {
+            _logger.LogDebug("Cache HIT: {Key}", key);
+            value = cached;
+            return true;
+        }
+        value = default;
+        return false;
+    }
+
+    public void Set<T>(string key, T value, TimeSpan ttl)
+    {
+        var options = new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = ttl,
+            Size = 1,
+        };
+        options.RegisterPostEvictionCallback((k, _, _, _) => _keys.TryRemove(k.ToString()!, out _));
+        _cache.Set(key, value, options);
+        _keys[key] = 0;
+        _logger.LogDebug("Cache SET: {Key} TTL={Ttl}", key, ttl);
+    }
+
     public void Remove(string key)
     {
         _cache.Remove(key);

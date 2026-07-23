@@ -1,7 +1,9 @@
+using Javaline.Commercial.Application.Interfaces;
 using Javaline.Commercial.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Javaline.Commercial.Api.Controllers;
 
@@ -11,10 +13,14 @@ namespace Javaline.Commercial.Api.Controllers;
 public class ReportsController : ControllerBase
 {
     private readonly JavalineDbContext _db;
+    private readonly ICacheService _cache;
+    private readonly IBackgroundTaskQueue _queue;
 
-    public ReportsController(JavalineDbContext db)
+    public ReportsController(JavalineDbContext db, ICacheService cache, IBackgroundTaskQueue queue)
     {
         _db = db;
+        _cache = cache;
+        _queue = queue;
     }
 
     [HttpGet("sales-summary")]
@@ -23,21 +29,21 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTime? to = null)
     {
         var startDate = from ?? DateTime.UtcNow.AddDays(-30);
-        var endDate = to ?? DateTime.UtcNow;
+        var endDate   = to   ?? DateTime.UtcNow;
+        var cacheKey  = $"rpt:sales:{startDate:yyyyMMdd}:{endDate:yyyyMMdd}";
 
-        var summary = await _db.Invoices
-            .Where(i => i.Date >= startDate && i.Date <= endDate && i.Status == "Paid")
-            .GroupBy(i => i.Date.Date)
-            .Select(g => new SalesSummaryDayDto(
-                g.Key,
-                g.Count(),
-                g.Sum(i => i.Subtotal),
-                g.Sum(i => i.Tax),
-                g.Sum(i => i.DiscountAmount),
-                g.Sum(i => i.Total)))
-            .OrderBy(s => s.Date)
-            .AsNoTracking()
-            .ToListAsync();
+        var summary = await _cache.GetOrCreateAsync(cacheKey, () =>
+            _db.Invoices
+                .Where(i => i.Date >= startDate && i.Date <= endDate && i.Status == "Paid")
+                .GroupBy(i => i.Date.Date)
+                .Select(g => new SalesSummaryDayDto(
+                    g.Key, g.Count(),
+                    g.Sum(i => i.Subtotal), g.Sum(i => i.Tax),
+                    g.Sum(i => i.DiscountAmount), g.Sum(i => i.Total)))
+                .OrderBy(s => s.Date)
+                .AsNoTracking()
+                .ToListAsync(),
+            TimeSpan.FromMinutes(5));
 
         return Ok(summary);
     }
@@ -59,53 +65,56 @@ public class ReportsController : ControllerBase
         return Ok(result ?? new InventoryValuationDto(0, 0, 0, 0));
     }
 
+    // Top-products deserializes JSON per invoice — CPU-intensive with large datasets.
+    // Pattern: cache hit → 200, cache miss → enqueue + 202, retry → 200 once ready.
     [HttpGet("top-products")]
     public async Task<IActionResult> GetTopProducts([FromQuery] int limit = 10)
     {
-        var invoices = await _db.Invoices
-            .Where(i => i.Status == "Paid" && i.Items != null)
-            .Select(i => i.Items!)
-            .AsNoTracking()
-            .ToListAsync();
+        var cacheKey = $"rpt:top-products:{limit}";
 
-        var productSales = new Dictionary<string, (string? Sku, decimal Qty, decimal Revenue, int Sold)>();
+        if (_cache.TryGet<List<TopProductDto>>(cacheKey, out var cached))
+            return Ok(cached);
 
-        foreach (var itemsJson in invoices)
+        await _queue.QueueAsync(async (sp, ct) =>
         {
-            try
+            var db    = sp.GetRequiredService<JavalineDbContext>();
+            var cache = sp.GetRequiredService<ICacheService>();
+
+            var invoices = await db.Invoices
+                .Where(i => i.Status == "Paid" && i.Items != null)
+                .Select(i => i.Items!)
+                .AsNoTracking()
+                .ToListAsync(ct);
+
+            var productSales = new Dictionary<string, (string? Sku, decimal Qty, decimal Revenue, int Sold)>();
+            var jsonOpts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+            foreach (var itemsJson in invoices)
             {
-                var items = System.Text.Json.JsonSerializer.Deserialize<List<CreateInvoiceItemDto>>(itemsJson,
-                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-                if (items == null) continue;
-
-                foreach (var item in items)
+                try
                 {
-                    var key = item.Name;
-                    if (!productSales.TryGetValue(key, out var acc))
-                        acc = (item.Sku, 0, 0, 0);
-
-                    productSales[key] = (
-                        acc.Sku,
-                        acc.Qty + item.Quantity,
-                        acc.Revenue + item.Total,
-                        acc.Sold + 1
-                    );
+                    var items = System.Text.Json.JsonSerializer.Deserialize<List<CreateInvoiceItemDto>>(itemsJson, jsonOpts);
+                    if (items == null) continue;
+                    foreach (var item in items)
+                    {
+                        var k = item.Name;
+                        if (!productSales.TryGetValue(k, out var acc)) acc = (item.Sku, 0, 0, 0);
+                        productSales[k] = (acc.Sku, acc.Qty + item.Quantity, acc.Revenue + item.Total, acc.Sold + 1);
+                    }
                 }
+                catch (System.Text.Json.JsonException) { continue; }
             }
-            catch (System.Text.Json.JsonException)
-            {
-                continue;
-            }
-        }
 
-        var topProducts = productSales.Values
-            .OrderByDescending(p => p.Qty)
-            .Take(limit)
-            .Select(p => new TopProductDto(p.Sku, p.Qty, p.Revenue, p.Sold))
-            .ToList();
+            var result = productSales.Values
+                .OrderByDescending(p => p.Qty)
+                .Take(limit)
+                .Select(p => new TopProductDto(p.Sku, p.Qty, p.Revenue, p.Sold))
+                .ToList();
 
-        return Ok(topProducts);
+            cache.Set(cacheKey, result, TimeSpan.FromMinutes(10));
+        });
+
+        return Accepted(new { message = "Reporte en proceso. Intenta de nuevo en unos segundos.", retryAfter = 3 });
     }
 
     [HttpGet("tax-summary")]

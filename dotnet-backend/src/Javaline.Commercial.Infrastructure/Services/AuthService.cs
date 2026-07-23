@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Javaline.Commercial.Application.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 using Javaline.Commercial.Domain.Entities;
 using Javaline.Commercial.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -16,11 +17,13 @@ public class AuthService : IAuthService
 {
     private readonly JavalineDbContext _db;
     private readonly IConfiguration _config;
+    private readonly IBackgroundTaskQueue _queue;
 
-    public AuthService(JavalineDbContext db, IConfiguration config)
+    public AuthService(JavalineDbContext db, IConfiguration config, IBackgroundTaskQueue queue)
     {
         _db = db;
         _config = config;
+        _queue = queue;
     }
 
     public async Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct)
@@ -173,6 +176,16 @@ public class AuthService : IAuthService
 
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
+
+        // Enqueue email — response returns immediately, email sends in background
+        var email = request.Email;
+        var baseUrl = _config["AppSettings:BaseUrl"] ?? "http://localhost:5173";
+        var inviteUrl = $"{baseUrl}/accept-invitation?token={Uri.EscapeDataString(tempToken)}";
+        await _queue.QueueAsync(async (sp, ct) =>
+        {
+            var emailService = sp.GetRequiredService<IEmailService>();
+            await emailService.SendInvitationAsync(email, inviteUrl, ct);
+        });
 
         return new InviteResponse
         {
