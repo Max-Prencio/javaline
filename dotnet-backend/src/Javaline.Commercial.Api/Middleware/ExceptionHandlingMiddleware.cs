@@ -43,13 +43,17 @@ public class ExceptionHandlingMiddleware
             _ => HttpStatusCode.InternalServerError
         };
 
+        // ApplicationException/ArgumentException are thrown intentionally by service layer
+        // and carry user-facing messages (validated input errors, business rule violations).
+        // InvalidOperationException/InternalServerError may carry internal stack details —
+        // never expose those to the client; log them and return a generic message.
         var detail = exception switch
         {
             ApplicationException appEx => appEx.Message,
             KeyNotFoundException => "The requested resource was not found.",
             UnauthorizedAccessException => "Unauthorized access.",
             ArgumentException argEx => argEx.Message,
-            InvalidOperationException opEx => opEx.Message,
+            InvalidOperationException => "La operación no pudo completarse. Intenta de nuevo.",
             _ => "An unexpected error occurred. Please try again later."
         };
 

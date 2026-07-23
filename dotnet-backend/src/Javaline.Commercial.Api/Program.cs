@@ -159,6 +159,12 @@ builder.Services.AddScoped<ISurveyService, SurveyService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<IStockService, StockService>();
 
+// ─── Request size limit (global: 5 MB for JSON; upload endpoints override with [RequestSizeLimit]) ───
+builder.WebHost.ConfigureKestrel(k =>
+{
+    k.Limits.MaxRequestBodySize = 5 * 1024 * 1024; // 5 MB default
+});
+
 // ─── API ───
 builder.Services.AddControllers(options =>
 {

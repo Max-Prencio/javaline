@@ -513,6 +513,42 @@ public class HRController : ControllerBase
         return Ok(result);
     }
 
+    // ─── Secure file download (serves uploads only to authenticated users) ───
+    // Files are NOT exposed as static assets; all downloads go through this endpoint.
+    [HttpGet("files/{filename}")]
+    public IActionResult DownloadFile(string filename)
+    {
+        // Strip any path components — only the bare filename is accepted
+        var safe = Path.GetFileName(filename);
+        if (string.IsNullOrWhiteSpace(safe) || safe != filename)
+            return BadRequest(new { detail = "Nombre de archivo inválido" });
+
+        var uploadDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "uploads", "ats"));
+        var fpath = Path.GetFullPath(Path.Combine(uploadDir, safe));
+
+        // Containment check — must be inside uploads/ats/
+        if (!fpath.StartsWith(uploadDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { detail = "Ruta de archivo inválida" });
+
+        if (!System.IO.File.Exists(fpath))
+            return NotFound(new { detail = "Archivo no encontrado" });
+
+        var ext = Path.GetExtension(safe).ToLowerInvariant();
+        var contentType = ext switch
+        {
+            ".pdf"  => "application/pdf",
+            ".doc"  => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".png"  => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif"  => "image/gif",
+            ".webp" => "image/webp",
+            _       => "application/octet-stream"
+        };
+
+        return PhysicalFile(fpath, contentType, safe);
+    }
+
     // ─── Position Upload Description ───
 
     [HttpPost("positions/{id}/upload-descr")]
