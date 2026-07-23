@@ -40,6 +40,11 @@ if (string.IsNullOrWhiteSpace(connStr))
     throw new InvalidOperationException(
         "ConnectionStrings:Default must be set via environment variable or vault.");
 
+var rawCorsOrigins = builder.Configuration["AppSettings:CorsOrigins"];
+if (string.IsNullOrWhiteSpace(rawCorsOrigins) && !builder.Environment.IsDevelopment())
+    throw new InvalidOperationException(
+        "AppSettings:CorsOrigins must be set in production (comma-separated list of allowed frontend origins).");
+
 // ─── Options Pattern ───
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
 builder.Services.Configure<CorsSettings>(builder.Configuration.GetSection(CorsSettings.SectionName));
@@ -91,18 +96,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 // ─── CORS ───
+// Dev fallback = Vite default ports. Prod MUST set AppSettings__CorsOrigins env var.
+var allowedOrigins = string.IsNullOrWhiteSpace(rawCorsOrigins)
+    ? new[] { "http://localhost:5173", "http://localhost:4173" }
+    : rawCorsOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        var origins = builder.Configuration["AppSettings:CorsOrigins"]
-            ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            ?? new[] { "http://localhost:5173" };
-
-        policy.WithOrigins(origins)
+        policy.WithOrigins(allowedOrigins)
               .WithMethods("GET", "POST", "PUT", "DELETE", "PATCH")
               .WithHeaders("Content-Type", "Authorization", "X-CSRF-Token")
-              .AllowCredentials();
+              .AllowCredentials()
+              .SetPreflightMaxAge(TimeSpan.FromMinutes(10));
     });
 });
 
